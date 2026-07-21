@@ -1,0 +1,611 @@
+// ==========================================
+// ⚙️ ค่าที่ต้องตั้งก่อนใช้งานจริง
+// ==========================================
+// 1) CLIENT_ID: สร้างจาก Google Cloud Console > APIs & Services > Credentials
+//    > Create Credentials > OAuth Client ID > Web application
+//    ใส่ Authorized JavaScript origins เป็น URL ของหน้าเว็บนี้ (เช่น https://xxxx.github.io)
+const CLIENT_ID = 'YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com';
+
+// 2) API_URL: URL ของ Web App ที่ deploy จาก Code.gs (อัปเดตทุกครั้งที่ deploy ใหม่)
+const API_URL = 'https://script.google.com/macros/s/XXXXXXXXXXXXXXXXXXXXXXXX/exec';
+
+const ALLOWED_DOMAIN = 'ku.th';
+// scope: drive.file (อัปโหลด/จัดการเฉพาะไฟล์ที่แอปนี้สร้าง) + userinfo.email (เอาไว้ตรวจโดเมน)
+const OAUTH_SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email';
+
+let tokenClient = null;
+let accessToken = null;
+let currentUserEmail = null;
+let isEditorUser = false;
+let sdgsList = [];
+let allItemsCache = [];
+let selectedFiles = [];
+let fullCalendarInstance = null;
+
+// ==========================================
+// 🔐 1. Google Sign-In (จำกัดเฉพาะโดเมน ku.th)
+// ==========================================
+window.addEventListener('load', () => {
+  // รอให้ google identity services โหลดเสร็จก่อนค่อย init
+  const waitForGis = setInterval(() => {
+    if (window.google && google.accounts && google.accounts.oauth2) {
+      clearInterval(waitForGis);
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: OAUTH_SCOPES,
+        callback: handleTokenResponse
+      });
+    }
+  }, 200);
+
+  document.getElementById('btn-login').addEventListener('click', () => {
+    if (!tokenClient) {
+      showLoginError('ระบบยังโหลดไม่เสร็จ กรุณารอสักครู่แล้วลองใหม่');
+      return;
+    }
+    tokenClient.requestAccessToken({ prompt: 'select_account' });
+  });
+});
+
+async function handleTokenResponse(resp) {
+  if (resp.error) {
+    showLoginError('เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
+    return;
+  }
+  accessToken = resp.access_token;
+
+  // ตรวจอีเมล + โดเมนจาก Google โดยตรง (ฝั่ง client)
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: 'Bearer ' + accessToken }
+    });
+    const info = await res.json();
+    const email = info.email || '';
+
+    if (!email.toLowerCase().endsWith('@' + ALLOWED_DOMAIN)) {
+      showLoginError('กรุณาเข้าสู่ระบบด้วยอีเมล @' + ALLOWED_DOMAIN + ' เท่านั้น (บัญชีที่เลือกคือ ' + email + ')');
+      accessToken = null;
+      return;
+    }
+
+    currentUserEmail = email;
+    await afterLoginSuccess();
+  } catch (err) {
+    console.error(err);
+    showLoginError('ไม่สามารถตรวจสอบบัญชีได้ กรุณาลองใหม่อีกครั้ง');
+  }
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('login-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+async function afterLoginSuccess() {
+  document.getElementById('login-gate').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('user-email').textContent = currentUserEmail;
+
+  await fetchConfig();
+  renderSdgsChecklist();
+  switchTab('form');
+}
+
+function logout() {
+  if (accessToken) {
+    google.accounts.oauth2.revoke(accessToken, () => {});
+  }
+  accessToken = null;
+  currentUserEmail = null;
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('login-gate').classList.remove('hidden');
+  document.getElementById('login-error').classList.add('hidden');
+}
+
+// ==========================================
+// 🌐 2. เรียก backend (GAS)
+// ==========================================
+async function fetchConfig() {
+  try {
+    const res = await fetch(API_URL + '?type=config&access_token=' + encodeURIComponent(accessToken));
+    const data = await res.json();
+    if (data.status === 'success') {
+      sdgsList = data.sdgs_list || [];
+      isEditorUser = !!data.is_editor;
+    }
+  } catch (err) {
+    console.error('fetchConfig error', err);
+  }
+}
+
+async function fetchItems() {
+  try {
+    const res = await fetch(API_URL + '?access_token=' + encodeURIComponent(accessToken));
+    const data = await res.json();
+    if (data.status === 'success') {
+      isEditorUser = !!data.is_editor;
+      return data.items || [];
+    }
+    return [];
+  } catch (err) {
+    console.error('fetchItems error', err);
+    return [];
+  }
+}
+
+async function postAction(payload) {
+  payload.access_token = accessToken;
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify(payload)
+  });
+  return res.json();
+}
+
+// ==========================================
+// 📎 3. อัปโหลดไฟล์ตรงขึ้น Google Drive (ไม่ผ่าน backend เพื่อรองรับไฟล์ใหญ่/วิดีโอ)
+//    จัดเก็บเป็นโครงสร้าง: <โฟลเดอร์ระบบ>/<ชื่อผู้แจ้ง>/<วันที่แจ้ง>/<รูป หรือ วิดิโอ>/ไฟล์จริง
+// ==========================================
+const DRIVE_ROOT_FOLDER_NAME = 'ระบบประชาสัมพันธ์ - ไฟล์แนบ';
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+let folderIdCache = {}; // cache กัน query ซ้ำๆ ระหว่างไฟล์หลายไฟล์ในการส่งเดียวกัน
+
+// หา folder ตามชื่อภายใต้ parent ที่กำหนด ถ้าไม่มีให้สร้างใหม่ (คืนค่า folder id)
+async function findOrCreateFolder(name, parentId) {
+  const cacheKey = (parentId || 'root') + '::' + name;
+  if (folderIdCache[cacheKey]) return folderIdCache[cacheKey];
+
+  let query = `name='${name.replace(/'/g, "\\'")}' and mimeType='${FOLDER_MIME}' and trashed=false`;
+  query += parentId ? ` and '${parentId}' in parents` : ` and 'root' in parents`;
+
+  const searchRes = await fetch(
+    'https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(query) + '&fields=files(id,name)',
+    { headers: { Authorization: 'Bearer ' + accessToken } }
+  );
+  const searchData = await searchRes.json();
+
+  let folderId;
+  if (searchData.files && searchData.files.length) {
+    folderId = searchData.files[0].id;
+  } else {
+    const metadata = { name, mimeType: FOLDER_MIME };
+    if (parentId) metadata.parents = [parentId];
+    const createRes = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify(metadata)
+    });
+    const created = await createRes.json();
+    folderId = created.id;
+  }
+
+  folderIdCache[cacheKey] = folderId;
+  return folderId;
+}
+
+// สร้าง/หาโฟลเดอร์ปลายทางสำหรับไฟล์หนึ่งไฟล์ ตามชื่อผู้แจ้ง + วันที่แจ้ง + ประเภทไฟล์
+async function getDestinationFolderId(reporterName, reportDateStr, isVideo) {
+  const rootId = await findOrCreateFolder(DRIVE_ROOT_FOLDER_NAME, null);
+  const reporterId = await findOrCreateFolder((reporterName || 'ไม่ระบุชื่อ').trim(), rootId);
+  const dateId = await findOrCreateFolder(reportDateStr, reporterId);
+  const typeId = await findOrCreateFolder(isVideo ? 'วิดิโอ' : 'รูป', dateId);
+  return typeId;
+}
+
+async function uploadFileToDrive(file, folderId) {
+  const metadata = { name: file.name, parents: folderId ? [folderId] : undefined };
+  const boundary = '-------pr_upload_' + Date.now();
+  const delimiter = '\r\n--' + boundary + '\r\n';
+  const closeDelim = '\r\n--' + boundary + '--';
+
+  const fileContent = await file.arrayBuffer();
+  const base64Data = arrayBufferToBase64(fileContent);
+
+  const multipartBody =
+    delimiter +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify(metadata) +
+    delimiter +
+    'Content-Type: ' + (file.type || 'application/octet-stream') + '\r\n' +
+    'Content-Transfer-Encoding: base64\r\n\r\n' +
+    base64Data +
+    closeDelim;
+
+  const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + accessToken,
+      'Content-Type': 'multipart/related; boundary=' + boundary
+    },
+    body: multipartBody
+  });
+  const uploaded = await uploadRes.json();
+  if (!uploaded.id) throw new Error('อัปโหลดไฟล์ไม่สำเร็จ: ' + file.name);
+
+  // เปิดสิทธิ์ให้ดูผ่านลิงก์ได้ (จำเป็นเพื่อให้เจ้าหน้าที่คนอื่นดูไฟล์แนบผ่านระบบได้)
+  await fetch('https://www.googleapis.com/drive/v3/files/' + uploaded.id + '/permissions', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + accessToken,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ role: 'reader', type: 'anyone' })
+  });
+
+  return uploaded.webViewLink || ('https://drive.google.com/file/d/' + uploaded.id + '/view');
+}
+
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+// ==========================================
+// 📝 4. ฟอร์ม + SDGs checklist
+// ==========================================
+function renderSdgsChecklist(selected) {
+  selected = selected || [];
+  const container = document.getElementById('sdgs-checklist');
+  if (!container) return;
+  container.innerHTML = sdgsList.map((s, idx) => `
+    <label class="sdgs-chip">
+      <input type="checkbox" value="${escapeAttr(s)}" ${selected.includes(s) ? 'checked' : ''}>
+      <span>${s}</span>
+    </label>
+  `).join('');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  flatpickr('#publish-date', {
+    dateFormat: 'Y-m-d',
+    altInput: true,
+    altFormat: 'j F Y',
+    locale: 'th',
+    disableMobile: true
+  });
+
+  const filesInput = document.getElementById('pr-files');
+  if (filesInput) {
+    filesInput.addEventListener('change', (e) => {
+      selectedFiles = Array.from(e.target.files || []);
+      renderFilePreview();
+    });
+  }
+
+  const form = document.getElementById('pr-form');
+  if (form) form.addEventListener('submit', handleFormSubmit);
+});
+
+function renderFilePreview() {
+  const el = document.getElementById('file-preview');
+  if (!el) return;
+  el.innerHTML = selectedFiles.map((f, idx) => `
+    <div class="text-xs bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 flex items-center gap-2">
+      <span>${f.type.startsWith('video') ? '🎬' : '🖼️'} ${f.name}</span>
+      <button type="button" onclick="removeSelectedFile(${idx})" class="text-slate-500 hover:text-red-400">✕</button>
+    </div>
+  `).join('');
+}
+function removeSelectedFile(idx) {
+  selectedFiles.splice(idx, 1);
+  renderFilePreview();
+}
+
+async function handleFormSubmit(e) {
+  e.preventDefault();
+
+  const reporterName = document.getElementById('reporter-name').value.trim();
+  const publishDate = document.getElementById('publish-date').value;
+  const checked = Array.from(document.querySelectorAll('#sdgs-checklist input:checked')).map(i => i.value);
+
+  if (!checked.length) {
+    Swal.fire({ icon: 'warning', title: 'กรุณาเลือกหมวดหมู่ SDGs อย่างน้อย 1 ข้อ', confirmButtonColor: '#ea580c' });
+    return;
+  }
+
+  const progressEl = document.getElementById('upload-progress');
+  progressEl.classList.remove('hidden');
+
+  Swal.fire({
+    title: 'กำลังส่งข้อมูล...',
+    html: 'กำลังอัปโหลดไฟล์แนบ (0/' + selectedFiles.length + ')',
+    allowOutsideClick: false,
+    didOpen: () => Swal.showLoading()
+  });
+
+  try {
+    folderIdCache = {}; // เริ่ม cache ใหม่ทุกครั้งที่ส่งฟอร์ม
+    const reportDateStr = formatDateYMD(new Date()); // "วันที่แจ้ง" = วันนี้ ตอนกดส่งฟอร์ม
+    const fileLinks = [];
+    for (let i = 0; i < selectedFiles.length; i++) {
+      Swal.update({ html: 'กำลังอัปโหลดไฟล์แนบ (' + (i + 1) + '/' + selectedFiles.length + ')' });
+      const isVideo = selectedFiles[i].type.startsWith('video');
+      const folderId = await getDestinationFolderId(reporterName, reportDateStr, isVideo);
+      const link = await uploadFileToDrive(selectedFiles[i], folderId);
+      fileLinks.push(link);
+    }
+
+    const result = await postAction({
+      action: 'create',
+      reporter_name: reporterName,
+      publish_date: publishDate,
+      sdgs: checked,
+      file_links: fileLinks
+    });
+
+    if (result.status === 'success') {
+      Swal.fire({
+        icon: 'success',
+        title: 'ส่งข้อมูลประชาสัมพันธ์สำเร็จ!',
+        html: 'รหัสอ้างอิง: <b class="text-orange-500">' + result.id + '</b>',
+        confirmButtonColor: '#ea580c'
+      }).then(() => {
+        document.getElementById('pr-form').reset();
+        selectedFiles = [];
+        renderFilePreview();
+        renderSdgsChecklist();
+        progressEl.classList.add('hidden');
+      });
+    } else {
+      throw new Error(result.message || 'ไม่ทราบสาเหตุ');
+    }
+  } catch (err) {
+    console.error(err);
+    Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message, confirmButtonColor: '#ea580c' });
+  }
+}
+
+// ==========================================
+// 🗂️ 5. Tabs
+// ==========================================
+function switchTab(tab) {
+  ['form', 'calendar', 'dashboard', 'list'].forEach(t => {
+    document.getElementById(t + '-section').classList.toggle('hidden', t !== tab);
+    document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+  });
+
+  if (tab === 'calendar' || tab === 'dashboard' || tab === 'list') {
+    fetchItems().then(items => {
+      allItemsCache = items;
+      if (tab === 'calendar') renderCalendarTab(items);
+      if (tab === 'dashboard') renderDashboardTab(items);
+      if (tab === 'list') renderListTab(items);
+    });
+  }
+}
+
+// ==========================================
+// 📅 6. ปฏิทิน
+// ==========================================
+function renderCalendarTab(items) {
+  const calendarEl = document.getElementById('calendar');
+  if (!calendarEl || typeof FullCalendar === 'undefined') return;
+
+  const events = items
+    .filter(t => t.publish_date)
+    .map(t => ({
+      title: '📰 ' + (t.reporter_name || t.id),
+      start: t.publish_date,
+      color: getDeadlineColor(t.publish_date),
+      extendedProps: { item: t }
+    }));
+
+  if (fullCalendarInstance) {
+    fullCalendarInstance.removeAllEventSources();
+    fullCalendarInstance.addEventSource(events);
+    fullCalendarInstance.updateSize();
+    return;
+  }
+
+  fullCalendarInstance = new FullCalendar.Calendar(calendarEl, {
+    initialView: 'dayGridMonth',
+    locale: 'th',
+    height: 'auto',
+    headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
+    events: events,
+    eventClick: (info) => showItemDetail(info.event.extendedProps.item)
+  });
+  fullCalendarInstance.render();
+}
+
+function getDeadlineColor(publishDate) {
+  const days = daysUntil(publishDate);
+  if (days < 0) return '#f43f5e'; // เลยกำหนด
+  if (days <= 3) return '#facc15'; // ใกล้ครบกำหนด
+  return '#3b82f6'; // รอลง
+}
+
+function daysUntil(dateStr) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(dateStr + 'T00:00:00');
+  return Math.round((target - today) / 86400000);
+}
+
+// ==========================================
+// 📊 7. แดชบอร์ดภาระงาน
+// ==========================================
+function renderDashboardTab(items) {
+  const total = items.length;
+  const pending = items.filter(t => daysUntil(t.publish_date) > 3).length;
+  const overdueOrSoon = items.filter(t => daysUntil(t.publish_date) <= 3);
+
+  document.getElementById('stat-total').textContent = total;
+  document.getElementById('stat-pending').textContent = pending;
+  document.getElementById('stat-overdue').textContent = overdueOrSoon.length;
+
+  const overdueList = document.getElementById('overdue-list');
+  const sorted = overdueOrSoon.slice().sort((a, b) => daysUntil(a.publish_date) - daysUntil(b.publish_date));
+  overdueList.innerHTML = sorted.length ? sorted.map(t => {
+    const d = daysUntil(t.publish_date);
+    const badge = d < 0
+      ? `<span class="px-2 py-0.5 rounded badge-overdue text-xs font-bold">เลยกำหนด ${Math.abs(d)} วัน</span>`
+      : `<span class="px-2 py-0.5 rounded badge-soon text-xs font-bold">อีก ${d} วัน</span>`;
+    return `
+      <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 cursor-pointer hover:border-orange-500" onclick='showItemDetail(${JSON.stringify(t).replace(/'/g, "&apos;")})'>
+        <div>
+          <p class="font-semibold">${t.reporter_name || '-'} <span class="text-slate-500 font-mono text-xs">#${t.id}</span></p>
+          <p class="text-xs text-slate-400">กำหนดลง: ${formatThaiDate(t.publish_date)}</p>
+        </div>
+        ${badge}
+      </div>`;
+  }).join('') : '<p class="text-slate-500 text-sm">ไม่มีข่าวที่ใกล้ครบกำหนดหรือเลยกำหนด 🎉</p>';
+
+  const sdgsCount = {};
+  sdgsList.forEach(s => sdgsCount[s] = 0);
+  items.forEach(t => (t.sdgs || []).forEach(s => { sdgsCount[s] = (sdgsCount[s] || 0) + 1; }));
+  const maxCount = Math.max(1, ...Object.values(sdgsCount));
+
+  const chartEl = document.getElementById('sdgs-chart');
+  chartEl.innerHTML = Object.keys(sdgsCount).map(s => {
+    const count = sdgsCount[s];
+    const pct = Math.round((count / maxCount) * 100);
+    return `
+      <div>
+        <div class="flex justify-between text-xs mb-1"><span>${s}</span><span class="text-slate-400">${count}</span></div>
+        <div class="w-full bg-slate-900 rounded-full h-2.5">
+          <div class="bg-gradient-to-r from-orange-500 to-amber-500 h-2.5 rounded-full" style="width:${pct}%"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function showItemDetail(t) {
+  Swal.fire({
+    title: t.reporter_name || t.id,
+    html: `
+      <div class="text-left text-sm space-y-2">
+        <p>🆔 ${t.id}</p>
+        <p>👤 ผู้แจ้ง: ${t.reporter_name || '-'} (${t.reporter_email || '-'})</p>
+        <p>📅 กำหนดลง: ${formatThaiDate(t.publish_date)}</p>
+        <p>🏷️ SDGs: ${(t.sdgs || []).join(', ') || '-'}</p>
+        ${(t.file_links || []).length ? `<p>📎 ไฟล์แนบ: ${(t.file_links || []).map((l, i) => `<a href="${l}" target="_blank" class="text-orange-400 underline">ไฟล์ ${i + 1}</a>`).join(' | ')}</p>` : ''}
+      </div>
+    `,
+    confirmButtonText: 'ปิด',
+    confirmButtonColor: '#ea580c'
+  });
+}
+
+// ==========================================
+// 📂 8. รายการทั้งหมด (แก้ไข/ลบ เฉพาะผู้ดูแล)
+// ==========================================
+function renderListTab(items) {
+  const el = document.getElementById('pr-list');
+  if (!items.length) {
+    el.innerHTML = '<div class="p-8 text-center text-slate-500">ยังไม่มีข้อมูลในระบบ</div>';
+    return;
+  }
+  el.innerHTML = items.map(t => `
+    <div class="p-4 flex flex-col sm:flex-row gap-3 justify-between sm:items-center">
+      <div>
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-bold">${t.reporter_name || '-'}</span>
+          <span class="text-xs font-mono text-slate-500">#${t.id}</span>
+        </div>
+        <p class="text-sm text-slate-400">📅 ${formatThaiDate(t.publish_date)} · 🏷️ ${(t.sdgs || []).join(', ') || '-'}</p>
+        <p class="text-xs text-slate-500">โดย ${t.reporter_email || '-'} · แจ้งเมื่อ ${t.created_at || '-'}</p>
+      </div>
+      <div class="flex gap-2">
+        <button onclick='showItemDetail(${JSON.stringify(t).replace(/'/g, "&apos;")})' class="px-3 py-1.5 bg-slate-700 text-xs rounded-lg hover:bg-slate-600">ดูรายละเอียด</button>
+        ${isEditorUser ? `
+          <button onclick='openEditModal(${JSON.stringify(t).replace(/'/g, "&apos;")})' class="px-3 py-1.5 bg-blue-600 text-xs rounded-lg hover:bg-blue-700">แก้ไข</button>
+          <button onclick="confirmDelete('${t.id}')" class="px-3 py-1.5 bg-red-600 text-xs rounded-lg hover:bg-red-700">ลบ</button>
+        ` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function openEditModal(t) {
+  const chips = sdgsList.map(s => `
+    <label class="sdgs-chip">
+      <input type="checkbox" value="${escapeAttr(s)}" ${(t.sdgs || []).includes(s) ? 'checked' : ''}>
+      <span>${s}</span>
+    </label>
+  `).join('');
+
+  Swal.fire({
+    title: 'แก้ไขรายการ #' + t.id,
+    html: `
+      <div class="text-left space-y-3">
+        <div>
+          <label class="text-xs font-semibold block mb-1">ชื่อผู้แจ้ง</label>
+          <input id="edit-name" class="swal2-input" style="margin:0" value="${escapeAttr(t.reporter_name || '')}">
+        </div>
+        <div>
+          <label class="text-xs font-semibold block mb-1">วันที่ต้องการให้ลง</label>
+          <input id="edit-date" type="date" class="swal2-input" style="margin:0" value="${t.publish_date || ''}">
+        </div>
+        <div>
+          <label class="text-xs font-semibold block mb-1">SDGs</label>
+          <div id="edit-sdgs" class="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto">${chips}</div>
+        </div>
+      </div>
+    `,
+    confirmButtonText: 'บันทึกการแก้ไข',
+    showCancelButton: true,
+    cancelButtonText: 'ยกเลิก',
+    confirmButtonColor: '#ea580c',
+    preConfirm: async () => {
+      const name = document.getElementById('edit-name').value.trim();
+      const date = document.getElementById('edit-date').value;
+      const checked = Array.from(document.querySelectorAll('#edit-sdgs input:checked')).map(i => i.value);
+      const result = await postAction({ action: 'update', id: t.id, reporter_name: name, publish_date: date, sdgs: checked });
+      if (result.status !== 'success') {
+        Swal.showValidationMessage(result.message || 'แก้ไขไม่สำเร็จ');
+        return false;
+      }
+      return true;
+    }
+  }).then(res => {
+    if (res.isConfirmed) {
+      Swal.fire({ icon: 'success', title: 'แก้ไขข้อมูลสำเร็จ', confirmButtonColor: '#ea580c' })
+        .then(() => switchTab('list'));
+    }
+  });
+}
+
+function confirmDelete(id) {
+  Swal.fire({
+    title: 'ลบรายการนี้?',
+    text: 'รหัส ' + id + ' จะถูกลบออกจากระบบถาวร',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'ใช่, ลบเลย',
+    cancelButtonText: 'ยกเลิก',
+    confirmButtonColor: '#d33'
+  }).then(async (res) => {
+    if (!res.isConfirmed) return;
+    const result = await postAction({ action: 'delete', id: id });
+    if (result.status === 'success') {
+      Swal.fire({ icon: 'success', title: 'ลบสำเร็จ', confirmButtonColor: '#ea580c' }).then(() => switchTab('list'));
+    } else {
+      Swal.fire({ icon: 'error', title: 'ลบไม่สำเร็จ', text: result.message, confirmButtonColor: '#ea580c' });
+    }
+  });
+}
+
+// ==========================================
+// 🔧 Utils
+// ==========================================
+function formatThaiDate(dateStr) {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+function escapeAttr(str) {
+  return String(str).replace(/"/g, '&quot;');
+}
+function formatDateYMD(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
