@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="th" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบรับข้อมูลประชาสัมพันธ์</title>
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Prompt:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://npmcdn.com/flatpickr/dist/l10n/th.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/locales/th.global.min.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+
+<body class="h-full bg-slate-950 text-slate-100 font-sans">
+
+  <!-- ========================================== -->
+  <!-- 🔐 หน้าเข้าสู่ระบบ (ต้อง login ด้วย @ku.th เท่านั้น) -->
+  <!-- ========================================== -->
+  <div id="login-gate" class="h-full w-full flex items-center justify-center px-4">
+    <div class="max-w-sm w-full bg-slate-900 border border-slate-700 rounded-2xl p-8 text-center shadow-2xl">
+      <div class="w-16 h-16 mx-auto bg-orange-600/10 rounded-2xl flex items-center justify-center text-3xl mb-4">📰</div>
+      <h1 class="heading-font text-xl font-bold mb-1">ระบบรับข้อมูลประชาสัมพันธ์</h1>
+      <p class="text-sm text-slate-400 mb-6">สำหรับเจ้าหน้าที่ที่ใช้อีเมล @ku.th เท่านั้น</p>
+      <button id="btn-login" class="w-full bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition hover:scale-[1.02] flex items-center justify-center gap-2">
+        🔑 เข้าสู่ระบบด้วย Google
+      </button>
+      <p id="login-error" class="hidden text-sm text-red-400 mt-4"></p>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 📱 แอปหลัก (แสดงหลัง login สำเร็จ) -->
+  <!-- ========================================== -->
+  <div id="app" class="hidden h-full w-full overflow-y-auto overflow-x-hidden">
+
+    <nav class="glass-effect sticky top-0 z-40 border-b border-slate-700 bg-slate-900/80 backdrop-blur-md">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col md:flex-row justify-between items-center gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg text-white text-xl">📰</div>
+          <div>
+            <h1 class="heading-font text-lg font-bold leading-tight">PR Intake</h1>
+            <p class="text-xs text-slate-400">ระบบรับข้อมูลประชาสัมพันธ์</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <span id="user-email" class="text-xs text-slate-400 hidden sm:inline"></span>
+          <button onclick="logout()" class="text-xs bg-slate-800 border border-slate-700 px-3 py-2 rounded-lg hover:bg-slate-700">ออกจากระบบ</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+      <div class="flex flex-wrap justify-center gap-2 md:gap-4 mb-8">
+        <button onclick="switchTab('form')" id="tab-form" class="tab-btn flex-1 min-w-[120px] max-w-[220px] px-4 py-3 rounded-xl text-sm font-bold transition-all">📝 แจ้งข้อมูล PR</button>
+        <button onclick="switchTab('calendar')" id="tab-calendar" class="tab-btn flex-1 min-w-[120px] max-w-[220px] px-4 py-3 rounded-xl text-sm font-bold transition-all">📅 ปฏิทินการลงข่าว</button>
+        <button onclick="switchTab('dashboard')" id="tab-dashboard" class="tab-btn flex-1 min-w-[120px] max-w-[220px] px-4 py-3 rounded-xl text-sm font-bold transition-all">📊 แดชบอร์ดภาระงาน</button>
+        <button onclick="switchTab('list')" id="tab-list" class="tab-btn flex-1 min-w-[120px] max-w-[220px] px-4 py-3 rounded-xl text-sm font-bold transition-all">📂 รายการทั้งหมด</button>
+      </div>
+
+      <!-- ============ ฟอร์ม ============ -->
+      <div id="form-section" class="max-w-3xl mx-auto animate-fade-in">
+        <div class="bg-slate-800 rounded-2xl shadow-xl p-6 md:p-8 border border-slate-700">
+          <div class="flex items-center gap-4 mb-6 pb-6 border-b border-slate-700">
+            <div class="w-14 h-14 bg-orange-50 rounded-2xl flex items-center justify-center text-3xl">📝</div>
+            <div>
+              <h2 class="heading-font text-2xl font-bold">แบบฟอร์มแจ้งข้อมูลประชาสัมพันธ์</h2>
+              <p class="text-slate-400 text-sm">กรอกรายละเอียดข่าวที่ต้องการเผยแพร่</p>
+            </div>
+          </div>
+
+          <form id="pr-form" class="space-y-6">
+            <div>
+              <label class="block text-sm font-semibold mb-2">ชื่อผู้แจ้ง <span class="text-red-500">*</span></label>
+              <input type="text" id="reporter-name" required class="field-input" placeholder="ระบุชื่อผู้แจ้ง">
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold mb-2">วันที่ต้องการให้ลง <span class="text-red-500">*</span></label>
+              <input type="text" id="publish-date" required class="field-input" placeholder="เลือกวันที่...">
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold mb-2">หมวดหมู่ SDGs ที่เกี่ยวข้อง <span class="text-red-500">*</span></label>
+              <div id="sdgs-checklist" class="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-900 border border-slate-700 rounded-xl p-4 max-h-72 overflow-y-auto">
+                <div class="text-sm text-slate-500">กำลังโหลดรายการ SDGs...</div>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold mb-2">📎 แนบรูปภาพ/วิดีโอประกอบข่าว</label>
+              <input type="file" id="pr-files" accept="image/*,video/*" multiple class="field-file">
+              <p class="text-[11px] text-slate-500 mt-1">*ไม่จำกัดจำนวนไฟล์ ระบบจะอัปโหลดขึ้น Google Drive โดยตรง อาจใช้เวลาสักครู่หากไฟล์มีขนาดใหญ่</p>
+              <div id="file-preview" class="flex flex-wrap gap-2 mt-3"></div>
+              <div id="upload-progress" class="hidden text-xs text-orange-400 mt-2"></div>
+            </div>
+
+            <button type="submit" id="btn-submit" class="w-full bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition hover:scale-[1.02]">
+              🚀 ส่งข้อมูลประชาสัมพันธ์
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- ============ ปฏิทิน ============ -->
+      <div id="calendar-section" class="hidden animate-fade-in max-w-6xl mx-auto">
+        <div class="bg-slate-800 rounded-2xl shadow-xl p-6 border border-slate-700">
+          <h2 class="heading-font text-2xl font-bold mb-1">🗓️ ปฏิทินการลงข่าวประชาสัมพันธ์</h2>
+          <p class="text-sm text-slate-400 mb-6">แสดงตามวันที่ต้องการให้ลงข่าวของแต่ละเรื่อง</p>
+          <div id="calendar" class="min-h-[600px]"></div>
+        </div>
+      </div>
+
+      <!-- ============ แดชบอร์ด ============ -->
+      <div id="dashboard-section" class="hidden animate-fade-in max-w-6xl mx-auto space-y-6">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700 text-center">
+            <div class="text-4xl font-bold text-orange-500" id="stat-total">0</div>
+            <div class="text-sm text-slate-400 mt-1">ข่าวทั้งหมดในระบบ</div>
+          </div>
+          <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700 text-center">
+            <div class="text-4xl font-bold text-blue-400" id="stat-pending">0</div>
+            <div class="text-sm text-slate-400 mt-1">รอลง (ยังไม่ถึงกำหนด)</div>
+          </div>
+          <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700 text-center">
+            <div class="text-4xl font-bold text-rose-400" id="stat-overdue">0</div>
+            <div class="text-sm text-slate-400 mt-1">ใกล้ครบกำหนด / เลยกำหนด</div>
+          </div>
+        </div>
+
+        <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700">
+          <h3 class="heading-font text-lg font-bold mb-4">🚨 ข่าวที่ใกล้ครบกำหนด/เลยกำหนดแล้ว</h3>
+          <div id="overdue-list" class="space-y-2 text-sm"></div>
+        </div>
+
+        <div class="bg-slate-800 rounded-2xl p-6 border border-slate-700">
+          <h3 class="heading-font text-lg font-bold mb-4">📊 สรุปตามหมวดหมู่ SDGs</h3>
+          <div id="sdgs-chart" class="space-y-2"></div>
+        </div>
+      </div>
+
+      <!-- ============ รายการทั้งหมด ============ -->
+      <div id="list-section" class="hidden animate-fade-in max-w-6xl mx-auto">
+        <div class="bg-slate-800 rounded-2xl shadow-xl border border-slate-700 divide-y divide-slate-700" id="pr-list">
+          <div class="p-8 text-center text-slate-500">กำลังโหลดข้อมูล...</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
