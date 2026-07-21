@@ -7,7 +7,7 @@
 const CLIENT_ID = '718318914992-teacpoi09b7ndb4ll22v0rtguoevs55h.apps.googleusercontent.com';
 
 // 2) API_URL: URL ของ Web App ที่ deploy จาก Code.gs (อัปเดตทุกครั้งที่ deploy ใหม่)
-const API_URL = 'https://script.google.com/macros/s/AKfycbymKBeDk1yblZbu4Y9xLlVjILcx3AUzHyj8cuFOGVZDG648RjtPYVb42tIZ9j-MDOJA8A/exec';
+const API_URL = 'https://script.google.com/macros/library/d/1lLC_-2Ly5q0bHxwh-wgoOXjWUIKt-dD7fJ3ODLukkSJi3hbsAMDjZemA/3';
 
 const ALLOWED_DOMAIN = 'ku.th';
 // scope: drive.file (อัปโหลด/จัดการเฉพาะไฟล์ที่แอปนี้สร้าง) + userinfo.email (เอาไว้ตรวจโดเมน)
@@ -300,7 +300,7 @@ function renderSdgsChecklist(selected) {
   if (!container) return;
   container.innerHTML = SDGS_GROUPS.map(g => `
     <div class="col-span-full">
-      <p class="text-xs font-bold text-orange-400 mt-2 mb-1">${g.group}</p>
+      <p class="text-xs font-bold text-blue-600 mt-2 mb-1">${g.group}</p>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
         ${g.items.map(s => `
           <label class="sdgs-chip">
@@ -338,7 +338,7 @@ function renderFilePreview() {
   const el = document.getElementById('file-preview');
   if (!el) return;
   el.innerHTML = selectedFiles.map((f, idx) => `
-    <div class="text-xs bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 flex items-center gap-2">
+    <div class="text-xs bg-slate-100 border border-slate-200 text-slate-700 rounded-lg px-2 py-1 flex items-center gap-2">
       <span>${f.type.startsWith('video') ? '🎬' : '🖼️'} ${f.name}</span>
       <button type="button" onclick="removeSelectedFile(${idx})" class="text-slate-500 hover:text-red-400">✕</button>
     </div>
@@ -395,7 +395,7 @@ async function handleFormSubmit(e) {
       Swal.fire({
         icon: 'success',
         title: 'ส่งข้อมูลประชาสัมพันธ์สำเร็จ!',
-        html: 'รหัสอ้างอิง: <b class="text-orange-500">' + result.id + '</b>',
+        html: 'รหัสอ้างอิง: <b class="text-blue-600">' + result.id + '</b>',
         confirmButtonColor: '#ea580c'
       }).then(() => {
         document.getElementById('pr-form').reset();
@@ -500,10 +500,10 @@ function renderDashboardTab(items) {
       ? `<span class="px-2 py-0.5 rounded badge-overdue text-xs font-bold">เลยกำหนด ${Math.abs(d)} วัน</span>`
       : `<span class="px-2 py-0.5 rounded badge-soon text-xs font-bold">อีก ${d} วัน</span>`;
     return `
-      <div class="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 cursor-pointer hover:border-orange-500" onclick='showItemDetail(${JSON.stringify(t).replace(/'/g, "&apos;")})'>
+      <div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 cursor-pointer hover:border-blue-400" onclick='showItemDetail(${JSON.stringify(t).replace(/'/g, "&apos;")})'>
         <div>
           <p class="font-semibold">${t.reporter_name || '-'} <span class="text-slate-500 font-mono text-xs">#${t.id}</span></p>
-          <p class="text-xs text-slate-400">กำหนดลง: ${formatThaiDate(t.publish_date)}</p>
+          <p class="text-xs text-slate-500">กำหนดลง: ${formatThaiDate(t.publish_date)}</p>
         </div>
         ${badge}
       </div>`;
@@ -520,9 +520,9 @@ function renderDashboardTab(items) {
     const pct = Math.round((count / maxCount) * 100);
     return `
       <div>
-        <div class="flex justify-between text-xs mb-1"><span>${s}</span><span class="text-slate-400">${count}</span></div>
-        <div class="w-full bg-slate-900 rounded-full h-2.5">
-          <div class="bg-gradient-to-r from-orange-500 to-amber-500 h-2.5 rounded-full" style="width:${pct}%"></div>
+        <div class="flex justify-between text-xs mb-1"><span>${s}</span><span class="text-slate-500">${count}</span></div>
+        <div class="w-full bg-slate-100 rounded-full h-2.5">
+          <div class="bg-gradient-to-r from-blue-500 to-blue-700 h-2.5 rounded-full" style="width:${pct}%"></div>
         </div>
       </div>`;
   }).join('');
@@ -537,7 +537,7 @@ function showItemDetail(t) {
         <p>👤 ผู้แจ้ง: ${t.reporter_name || '-'} (${t.reporter_email || '-'})</p>
         <p>📅 กำหนดลง: ${formatThaiDate(t.publish_date)}</p>
         <p>🏷️ SDGs: ${(t.sdgs || []).join(', ') || '-'}</p>
-        ${(t.file_links || []).length ? `<p>📎 ไฟล์แนบ: ${(t.file_links || []).map((l, i) => `<a href="${l}" target="_blank" class="text-orange-400 underline">ไฟล์ ${i + 1}</a>`).join(' | ')}</p>` : ''}
+        ${(t.file_links || []).length ? `<p>📎 ไฟล์แนบ: ${(t.file_links || []).map((l, i) => `<a href="${l}" target="_blank" class="text-blue-600 underline">ไฟล์ ${i + 1}</a>`).join(' | ')}</p>` : ''}
       </div>
     `,
     confirmButtonText: 'ปิด',
@@ -561,11 +561,11 @@ function renderListTab(items) {
           <span class="font-bold">${t.reporter_name || '-'}</span>
           <span class="text-xs font-mono text-slate-500">#${t.id}</span>
         </div>
-        <p class="text-sm text-slate-400">📅 ${formatThaiDate(t.publish_date)} · 🏷️ ${(t.sdgs || []).join(', ') || '-'}</p>
+        <p class="text-sm text-slate-500">📅 ${formatThaiDate(t.publish_date)} · 🏷️ ${(t.sdgs || []).join(', ') || '-'}</p>
         <p class="text-xs text-slate-500">โดย ${t.reporter_email || '-'} · แจ้งเมื่อ ${t.created_at || '-'}</p>
       </div>
       <div class="flex gap-2">
-        <button onclick='showItemDetail(${JSON.stringify(t).replace(/'/g, "&apos;")})' class="px-3 py-1.5 bg-slate-700 text-xs rounded-lg hover:bg-slate-600">ดูรายละเอียด</button>
+        <button onclick='showItemDetail(${JSON.stringify(t).replace(/'/g, "&apos;")})' class="px-3 py-1.5 bg-slate-100 text-slate-700 text-xs rounded-lg hover:bg-slate-200">ดูรายละเอียด</button>
         ${isEditorUser ? `
           <button onclick='openEditModal(${JSON.stringify(t).replace(/'/g, "&apos;")})' class="px-3 py-1.5 bg-blue-600 text-xs rounded-lg hover:bg-blue-700">แก้ไข</button>
           <button onclick="confirmDelete('${t.id}')" class="px-3 py-1.5 bg-red-600 text-xs rounded-lg hover:bg-red-700">ลบ</button>
@@ -578,7 +578,7 @@ function renderListTab(items) {
 function openEditModal(t) {
   const chips = SDGS_GROUPS.map(g => `
     <div class="col-span-full">
-      <p class="text-xs font-bold text-orange-400 mt-2 mb-1">${g.group}</p>
+      <p class="text-xs font-bold text-blue-600 mt-2 mb-1">${g.group}</p>
       <div class="grid grid-cols-1 gap-2">
         ${g.items.map(s => `
           <label class="sdgs-chip">
