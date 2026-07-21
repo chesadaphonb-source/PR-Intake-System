@@ -148,14 +148,40 @@ function logout() {
 }
 
 // ==========================================
-// 🌐 2. เรียก backend (GAS)
+// 🌐 2. เรียก backend (GAS) — ใช้ JSONP แทน fetch() ทั้งหมด
+// เหตุผล: fetch() ข้ามโดเมนไปหา Apps Script เจอบั๊ก CORS ของ Google เอง (302 redirect ที่
+// script.google.com ไม่แนบ CORS header) ทำให้ fetch ล้มเหลวเสมอ ไม่ว่าจะตั้งค่า deployment
+// ถูกแค่ไหนก็ตาม การโหลดผ่าน <script> tag (JSONP) ไม่ถูกจำกัดด้วย CORS เลย จึงใช้ทางนี้แทน
 // ==========================================
+function jsonp(url) {
+  return new Promise((resolve, reject) => {
+    const cbName = 'jsonp_cb_' + Math.random().toString(36).slice(2) + Date.now();
+    const script = document.createElement('script');
+
+    const cleanup = () => {
+      delete window[cbName];
+      script.remove();
+    };
+
+    window[cbName] = (data) => {
+      cleanup();
+      resolve(data);
+    };
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error('เชื่อมต่อกับระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'));
+    };
+
+    script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName;
+    document.body.appendChild(script);
+  });
+}
+
 async function fetchConfig() {
   try {
-    const res = await fetch(API_URL + '?type=config&access_token=' + encodeURIComponent(accessToken));
-    const data = await res.json();
+    const data = await jsonp(API_URL + '?type=config&access_token=' + encodeURIComponent(accessToken));
     if (data.status === 'success') {
-      sdgsList = data.sdgs_list || [];
       isEditorUser = !!data.is_editor;
     }
   } catch (err) {
@@ -165,8 +191,7 @@ async function fetchConfig() {
 
 async function fetchItems() {
   try {
-    const res = await fetch(API_URL + '?access_token=' + encodeURIComponent(accessToken));
-    const data = await res.json();
+    const data = await jsonp(API_URL + '?access_token=' + encodeURIComponent(accessToken));
     if (data.status === 'success') {
       isEditorUser = !!data.is_editor;
       return data.items || [];
@@ -180,12 +205,8 @@ async function fetchItems() {
 
 async function postAction(payload) {
   payload.access_token = accessToken;
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain' },
-    body: JSON.stringify(payload)
-  });
-  return res.json();
+  const url = API_URL + '?action=' + encodeURIComponent(payload.action) + '&payload=' + encodeURIComponent(JSON.stringify(payload));
+  return jsonp(url);
 }
 
 // ==========================================
