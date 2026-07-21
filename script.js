@@ -17,7 +17,51 @@ let tokenClient = null;
 let accessToken = null;
 let currentUserEmail = null;
 let isEditorUser = false;
-let sdgsList = [];
+// รายการ SDGs แบบเต็ม จัดกลุ่มตาม 4 มิติ ตามเอกสารที่ใช้จริง
+const SDGS_GROUPS = [
+  {
+    group: 'มิติด้านสังคม (People) และการศึกษา',
+    items: [
+      'SDG1: ขจัดความยากจนในทุกรูปแบบ ทุกที่',
+      'SDG2: ขจัดความหิวโหย บรรลุความมั่นคงทางอาหาร ส่งเสริมเกษตรกรรมที่ยั่งยืน',
+      'SDG3: สร้างหลักประกันการมีสุขภาวะที่ดี และส่งเสริมความเป็นอยู่ที่ดีสำหรับทุกคน',
+      'SDG4: สร้างหลักประกันการศึกษาที่เท่าเทียมและครอบคลุม ส่งเสริมโอกาสการเรียนรู้ตลอดชีวิต',
+      'SDG5: บรรลุความเท่าเทียมทางเพศ เสริมสร้างศักยภาพของสตรีและเด็กหญิง'
+    ]
+  },
+  {
+    group: 'มิติด้านสิ่งแวดล้อม (Planet) และทรัพยากร',
+    items: [
+      'SDG6: สร้างหลักประกันเรื่องน้ำและการสุขาภิบาลให้มีการจัดการอย่างยั่งยืน',
+      'SDG12: สร้างรูปแบบการผลิตและการบริโภคที่ยั่งยืน',
+      'SDG13: ปฏิบัติการอย่างเร่งด่วนเพื่อรับมือกับการเปลี่ยนแปลงสภาพภูมิอากาศ',
+      'SDG14: อนุรักษ์และใช้ประโยชน์จากมหาสมุทร ทะเล และทรัพยากรทางทะเลอย่างยั่งยืน',
+      'SDG15: ปกป้อง ฟื้นฟู และส่งเสริมการใช้ประโยชน์จากระบบนิเวศบนบกอย่างยั่งยืน'
+    ]
+  },
+  {
+    group: 'มิติด้านเศรษฐกิจ (Prosperity) และโครงสร้างพื้นฐาน',
+    items: [
+      'SDG7: สร้างหลักประกันให้ทุกคนเข้าถึงพลังงานที่ยั่งยืนในราคาที่เหมาะสม',
+      'SDG8: ส่งเสริมการเติบโตทางเศรษฐกิจที่ต่อเนื่อง ครอบคลุม และยั่งยืน',
+      'SDG9: พัฒนาโครงสร้างพื้นฐานที่พร้อมรับการเปลี่ยนแปลง ส่งเสริมอุตสาหกรรมที่ยั่งยืน',
+      'SDG10: ลดความไม่เสมอภาคทั้งภายในและระหว่างประเทศ',
+      'SDG11: ทำให้เมืองและการตั้งถิ่นฐานของมนุษย์มีความปลอดภัย ทั่วถึง และยั่งยืน'
+    ]
+  },
+  {
+    group: 'มิติด้านสันติภาพ (Peace) และหุ้นส่วนการพัฒนา (Partnerships)',
+    items: [
+      'SDG16: ส่งเสริมสังคมที่สงบสุข ยุติธรรม และครอบคลุม',
+      'SDG17: เสริมความเข้มแข็งให้แก่กลไกการดำเนินงานและฟื้นฟูหุ้นส่วนความร่วมมือระดับโลก'
+    ]
+  },
+  {
+    group: 'อื่นๆ',
+    items: ['ไม่เข้าข่าย SDGs ใดๆ']
+  }
+];
+let sdgsList = SDGS_GROUPS.flatMap(g => g.items); // รายการแบบ flat ไว้ใช้กับแดชบอร์ด/แก้ไข/บันทึกข้อมูล
 let allItemsCache = [];
 let selectedFiles = [];
 let fullCalendarInstance = null;
@@ -87,9 +131,9 @@ async function afterLoginSuccess() {
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('user-email').textContent = currentUserEmail;
 
-  await fetchConfig();
-  renderSdgsChecklist();
+  renderSdgsChecklist(); // แสดงรายการ SDGs ทันที ไม่ต้องรอ backend เพราะเป็นข้อมูลคงที่
   switchTab('form');
+  fetchConfig(); // ยิงแยกไว้เบื้องหลัง เอาไว้เช็คสิทธิ์ผู้ดูแล (is_editor) เท่านั้น
 }
 
 function logout() {
@@ -254,11 +298,18 @@ function renderSdgsChecklist(selected) {
   selected = selected || [];
   const container = document.getElementById('sdgs-checklist');
   if (!container) return;
-  container.innerHTML = sdgsList.map((s, idx) => `
-    <label class="sdgs-chip">
-      <input type="checkbox" value="${escapeAttr(s)}" ${selected.includes(s) ? 'checked' : ''}>
-      <span>${s}</span>
-    </label>
+  container.innerHTML = SDGS_GROUPS.map(g => `
+    <div class="col-span-full">
+      <p class="text-xs font-bold text-orange-400 mt-2 mb-1">${g.group}</p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        ${g.items.map(s => `
+          <label class="sdgs-chip">
+            <input type="checkbox" value="${escapeAttr(s)}" ${selected.includes(s) ? 'checked' : ''}>
+            <span>${s}</span>
+          </label>
+        `).join('')}
+      </div>
+    </div>
   `).join('');
 }
 
@@ -525,11 +576,18 @@ function renderListTab(items) {
 }
 
 function openEditModal(t) {
-  const chips = sdgsList.map(s => `
-    <label class="sdgs-chip">
-      <input type="checkbox" value="${escapeAttr(s)}" ${(t.sdgs || []).includes(s) ? 'checked' : ''}>
-      <span>${s}</span>
-    </label>
+  const chips = SDGS_GROUPS.map(g => `
+    <div class="col-span-full">
+      <p class="text-xs font-bold text-orange-400 mt-2 mb-1">${g.group}</p>
+      <div class="grid grid-cols-1 gap-2">
+        ${g.items.map(s => `
+          <label class="sdgs-chip">
+            <input type="checkbox" value="${escapeAttr(s)}" ${(t.sdgs || []).includes(s) ? 'checked' : ''}>
+            <span>${s}</span>
+          </label>
+        `).join('')}
+      </div>
+    </div>
   `).join('');
 
   Swal.fire({
@@ -546,7 +604,7 @@ function openEditModal(t) {
         </div>
         <div>
           <label class="text-xs font-semibold block mb-1">SDGs</label>
-          <div id="edit-sdgs" class="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto">${chips}</div>
+          <div id="edit-sdgs" class="grid grid-cols-1 gap-1 max-h-72 overflow-y-auto">${chips}</div>
         </div>
       </div>
     `,
