@@ -153,7 +153,8 @@ function logout() {
 // script.google.com ไม่แนบ CORS header) ทำให้ fetch ล้มเหลวเสมอ ไม่ว่าจะตั้งค่า deployment
 // ถูกแค่ไหนก็ตาม การโหลดผ่าน <script> tag (JSONP) ไม่ถูกจำกัดด้วย CORS เลย จึงใช้ทางนี้แทน
 // ==========================================
-function jsonp(url) {
+function jsonp(url, retriesLeft) {
+  retriesLeft = retriesLeft === undefined ? 2 : retriesLeft;
   return new Promise((resolve, reject) => {
     const cbName = 'jsonp_cb_' + Math.random().toString(36).slice(2) + Date.now();
     const script = document.createElement('script');
@@ -169,8 +170,16 @@ function jsonp(url) {
     };
 
     script.onerror = () => {
+      console.log('[debug] jsonp script.onerror fired for URL (first 120 chars):', script.src.slice(0, 120));
       cleanup();
-      reject(new Error('เชื่อมต่อกับระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'));
+      if (retriesLeft > 0) {
+        // ลองใหม่อัตโนมัติ เผื่อเป็นปัญหาเครือข่าย/quota ชั่วคราว
+        setTimeout(() => {
+          jsonp(url, retriesLeft - 1).then(resolve).catch(reject);
+        }, 800);
+      } else {
+        reject(new Error('เชื่อมต่อกับระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'));
+      }
     };
 
     script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName;
@@ -180,9 +189,12 @@ function jsonp(url) {
 
 async function fetchConfig() {
   try {
+    console.log('[debug] fetchConfig — accessToken present:', !!accessToken, 'length:', accessToken ? accessToken.length : 0);
     const data = await jsonp(API_URL + '?type=config&access_token=' + encodeURIComponent(accessToken));
     if (data.status === 'success') {
       isEditorUser = !!data.is_editor;
+    } else {
+      console.log('[debug] fetchConfig backend responded with error:', data.message);
     }
   } catch (err) {
     console.error('fetchConfig error', err);
@@ -191,11 +203,13 @@ async function fetchConfig() {
 
 async function fetchItems() {
   try {
+    console.log('[debug] fetchItems — accessToken present:', !!accessToken, 'length:', accessToken ? accessToken.length : 0);
     const data = await jsonp(API_URL + '?access_token=' + encodeURIComponent(accessToken));
     if (data.status === 'success') {
       isEditorUser = !!data.is_editor;
       return data.items || [];
     }
+    console.log('[debug] fetchItems backend responded with error:', data.message);
     return [];
   } catch (err) {
     console.error('fetchItems error', err);
