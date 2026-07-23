@@ -7,7 +7,7 @@
 const CLIENT_ID = '718318914992-teacpoi09b7ndb4ll22v0rtguoevs55h.apps.googleusercontent.com';
 
 // 2) API_URL: URL ของ Web App ที่ deploy จาก Code.gs (อัปเดตทุกครั้งที่ deploy ใหม่)
-const API_URL = 'https://script.google.com/macros/s/AKfycbw_a56KSdipmhLD0wb6uAlGwupek4cBnv1f6zIiFWIde0PCRiTjWL8TDV_R6bDXPUACIg/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbymKBeDk1yblZbu4Y9xLlVjILcx3AUzHyj8cuFOGVZDG648RjtPYVb42tIZ9j-MDOJA8A/exec';
 
 const ALLOWED_DOMAIN = 'ku.th';
 // scope: drive.file (อัปโหลด/จัดการเฉพาะไฟล์ที่แอปนี้สร้าง) + userinfo.email (เอาไว้ตรวจโดเมน)
@@ -190,7 +190,7 @@ function jsonp(url, retriesLeft) {
 async function fetchConfig() {
   try {
     console.log('[debug] fetchConfig — accessToken present:', !!accessToken, 'length:', accessToken ? accessToken.length : 0);
-    const data = await jsonp(API_URL + '?type=config&access_token=' + encodeURIComponent(accessToken));
+    const data = await jsonp(API_URL + '?type=config&tok=' + encodeURIComponent(accessToken));
     if (data.status === 'success') {
       isEditorUser = !!data.is_editor;
     } else {
@@ -204,7 +204,7 @@ async function fetchConfig() {
 async function fetchItems() {
   try {
     console.log('[debug] fetchItems — accessToken present:', !!accessToken, 'length:', accessToken ? accessToken.length : 0);
-    const data = await jsonp(API_URL + '?access_token=' + encodeURIComponent(accessToken));
+    const data = await jsonp(API_URL + '?tok=' + encodeURIComponent(accessToken));
     if (data.status === 'success') {
       isEditorUser = !!data.is_editor;
       return data.items || [];
