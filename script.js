@@ -4,10 +4,10 @@
 // 1) CLIENT_ID: สร้างจาก Google Cloud Console > APIs & Services > Credentials
 //    > Create Credentials > OAuth Client ID > Web application
 //    ใส่ Authorized JavaScript origins เป็น URL ของหน้าเว็บนี้ (เช่น https://xxxx.github.io)
-const CLIENT_ID = 'YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com';
+const CLIENT_ID = '718318914992-teacpoi09b7ndb4ll22v0rtguoevs55h.apps.googleusercontent.com';
 
 // 2) API_URL: URL ของ Web App ที่ deploy จาก Code.gs (อัปเดตทุกครั้งที่ deploy ใหม่)
-const API_URL = 'https://script.google.com/macros/s/XXXXXXXXXXXXXXXXXXXXXXXX/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbw_a56KSdipmhLD0wb6uAlGwupek4cBnv1f6zIiFWIde0PCRiTjWL8TDV_R6bDXPUACIg/exec';
 
 const ALLOWED_DOMAIN = 'ku.th';
 // scope: drive.file (อัปโหลด/จัดการเฉพาะไฟล์ที่แอปนี้สร้าง) + userinfo.email (เอาไว้ตรวจโดเมน)
