@@ -4,10 +4,10 @@
 // 1) CLIENT_ID: สร้างจาก Google Cloud Console > APIs & Services > Credentials
 //    > Create Credentials > OAuth Client ID > Web application
 //    ใส่ Authorized JavaScript origins เป็น URL ของหน้าเว็บนี้ (เช่น https://xxxx.github.io)
-const CLIENT_ID = '718318914992-teacpoi09b7ndb4ll22v0rtguoevs55h.apps.googleusercontent.com';
+const CLIENT_ID = 'YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com';
 
 // 2) API_URL: URL ของ Web App ที่ deploy จาก Code.gs (อัปเดตทุกครั้งที่ deploy ใหม่)
-const API_URL = 'https://script.google.com/macros/s/AKfycbw_a56KSdipmhLD0wb6uAlGwupek4cBnv1f6zIiFWIde0PCRiTjWL8TDV_R6bDXPUACIg/exec';
+const API_URL = 'https://script.google.com/macros/s/XXXXXXXXXXXXXXXXXXXXXXXX/exec';
 
 const ALLOWED_DOMAIN = 'ku.th';
 // scope: drive.file (อัปโหลด/จัดการเฉพาะไฟล์ที่แอปนี้สร้าง) + userinfo.email (เอาไว้ตรวจโดเมน)
@@ -275,38 +275,72 @@ async function getDestinationFolderId(reporterName, reportDateStr, isVideo) {
   return typeId;
 }
 
-async function uploadFileToDrive(file, folderId) {
+async function uploadFileToDrive(file, folderId, onProgress) {
   const metadata = { name: file.name, parents: folderId ? [folderId] : undefined };
-  const boundary = '-------pr_upload_' + Date.now();
-  const delimiter = '\r\n--' + boundary + '\r\n';
-  const closeDelim = '\r\n--' + boundary + '--';
 
-  const fileContent = await file.arrayBuffer();
-  const base64Data = arrayBufferToBase64(fileContent);
-
-  const multipartBody =
-    delimiter +
-    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-    JSON.stringify(metadata) +
-    delimiter +
-    'Content-Type: ' + (file.type || 'application/octet-stream') + '\r\n' +
-    'Content-Transfer-Encoding: base64\r\n\r\n' +
-    base64Data +
-    closeDelim;
-
-  const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+  // 1) เริ่ม session แบบ resumable (สำคัญมากสำหรับไฟล์ใหญ่ เช่น วิดีโอ 1 ชั่วโมง)
+  const initRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,webViewLink', {
     method: 'POST',
     headers: {
       Authorization: 'Bearer ' + accessToken,
-      'Content-Type': 'multipart/related; boundary=' + boundary
+      'Content-Type': 'application/json; charset=UTF-8',
+      'X-Upload-Content-Type': file.type || 'application/octet-stream',
+      'X-Upload-Content-Length': String(file.size)
     },
-    body: multipartBody
+    body: JSON.stringify(metadata)
   });
-  const uploaded = await uploadRes.json();
-  if (!uploaded.id) throw new Error('อัปโหลดไฟล์ไม่สำเร็จ: ' + file.name);
+  if (!initRes.ok) throw new Error('เริ่มอัปโหลดไฟล์ไม่สำเร็จ: ' + file.name);
+  const uploadUrl = initRes.headers.get('Location');
+  if (!uploadUrl) throw new Error('ไม่พบช่องทางอัปโหลดไฟล์: ' + file.name);
+
+  // 2) ส่งไฟล์เป็นก้อนๆ (chunk ละ 8MB) แทนการส่งทีเดียวทั้งไฟล์
+  //    - ไม่ต้องแปลง base64 ทั้งไฟล์ (ลดการใช้หน่วยความจำเบราว์เซอร์ลงมาก)
+  //    - ถ้าก้อนไหนล้มเหลว ลอง retry เฉพาะก้อนนั้นได้ ไม่ต้องเริ่มใหม่ทั้งไฟล์
+  const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB
+  let start = 0;
+  let uploadedFileId = null;
+  let uploadedWebViewLink = null;
+
+  while (start < file.size) {
+    const end = Math.min(start + CHUNK_SIZE, file.size);
+    const chunk = file.slice(start, end);
+
+    let res;
+    let attempt = 0;
+    while (true) {
+      try {
+        res = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Range': `bytes ${start}-${end - 1}/${file.size}` },
+          body: chunk
+        });
+        break;
+      } catch (err) {
+        attempt++;
+        if (attempt >= 3) throw new Error('อัปโหลดไฟล์ล้มเหลว (เครือข่ายขัดข้อง): ' + file.name);
+        await new Promise(r => setTimeout(r, 1000 * attempt)); // รอแล้วลองใหม่ กันเน็ตสะดุดชั่วคราว
+      }
+    }
+
+    if (res.status === 200 || res.status === 201) {
+      const result = await res.json();
+      uploadedFileId = result.id;
+      uploadedWebViewLink = result.webViewLink;
+      if (onProgress) onProgress(1);
+      break;
+    } else if (res.status === 308) {
+      // ยังอัปโหลดไม่ครบ ไปต่อก้อนถัดไป
+      start = end;
+      if (onProgress) onProgress(start / file.size);
+    } else {
+      throw new Error('อัปโหลดไฟล์ไม่สำเร็จ: ' + file.name + ' (รหัสสถานะ ' + res.status + ')');
+    }
+  }
+
+  if (!uploadedFileId) throw new Error('อัปโหลดไฟล์ไม่สำเร็จ: ' + file.name);
 
   // เปิดสิทธิ์ให้ดูผ่านลิงก์ได้ (จำเป็นเพื่อให้เจ้าหน้าที่คนอื่นดูไฟล์แนบผ่านระบบได้)
-  await fetch('https://www.googleapis.com/drive/v3/files/' + uploaded.id + '/permissions', {
+  await fetch('https://www.googleapis.com/drive/v3/files/' + uploadedFileId + '/permissions', {
     method: 'POST',
     headers: {
       Authorization: 'Bearer ' + accessToken,
@@ -315,17 +349,7 @@ async function uploadFileToDrive(file, folderId) {
     body: JSON.stringify({ role: 'reader', type: 'anyone' })
   });
 
-  return uploaded.webViewLink || ('https://drive.google.com/file/d/' + uploaded.id + '/view');
-}
-
-function arrayBufferToBase64(buffer) {
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
+  return uploadedWebViewLink || ('https://drive.google.com/file/d/' + uploadedFileId + '/view');
 }
 
 // ==========================================
@@ -413,10 +437,12 @@ async function handleFormSubmit(e) {
     const reportDateStr = formatDateYMD(new Date()); // "วันที่แจ้ง" = วันนี้ ตอนกดส่งฟอร์ม
     const fileLinks = [];
     for (let i = 0; i < selectedFiles.length; i++) {
-      Swal.update({ html: 'กำลังอัปโหลดไฟล์แนบ (' + (i + 1) + '/' + selectedFiles.length + ')' });
       const isVideo = selectedFiles[i].type.startsWith('video');
       const folderId = await getDestinationFolderId(reporterName, reportDateStr, isVideo);
-      const link = await uploadFileToDrive(selectedFiles[i], folderId);
+      const link = await uploadFileToDrive(selectedFiles[i], folderId, (fraction) => {
+        const pct = Math.round(fraction * 100);
+        Swal.update({ html: 'กำลังอัปโหลดไฟล์แนบ (' + (i + 1) + '/' + selectedFiles.length + ') — ' + pct + '%<br><span style="font-size:11px;color:#94a3b8">ไฟล์ขนาดใหญ่ เช่น วิดีโอยาว อาจใช้เวลาหลายนาที กรุณาอย่าปิดหน้านี้</span>' });
+      });
       fileLinks.push(link);
     }
 
