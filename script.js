@@ -7,7 +7,7 @@
 const CLIENT_ID = '718318914992-teacpoi09b7ndb4ll22v0rtguoevs55h.apps.googleusercontent.com';
 
 // 2) API_URL: URL ของ Web App ที่ deploy จาก Code.gs (อัปเดตทุกครั้งที่ deploy ใหม่)
-const API_URL = 'https://script.google.com/macros/s/AKfycbymKBeDk1yblZbu4Y9xLlVjILcx3AUzHyj8cuFOGVZDG648RjtPYVb42tIZ9j-MDOJA8A/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbw_a56KSdipmhLD0wb6uAlGwupek4cBnv1f6zIiFWIde0PCRiTjWL8TDV_R6bDXPUACIg/exec';
 
 const ALLOWED_DOMAIN = 'ku.th';
 // scope: drive.file (อัปโหลด/จัดการเฉพาะไฟล์ที่แอปนี้สร้าง) + userinfo.email (เอาไว้ตรวจโดเมน)
@@ -195,6 +195,7 @@ async function fetchConfig() {
       isEditorUser = !!data.is_editor;
     } else {
       console.log('[debug] fetchConfig backend responded with error:', data.message);
+      console.log('[debug] backend received these param keys:', data.debug_received_params, '| token present:', data.debug_token_present, '| token length:', data.debug_token_length);
     }
   } catch (err) {
     console.error('fetchConfig error', err);
@@ -210,6 +211,7 @@ async function fetchItems() {
       return data.items || [];
     }
     console.log('[debug] fetchItems backend responded with error:', data.message);
+    console.log('[debug] backend received these param keys:', data.debug_received_params, '| token present:', data.debug_token_present, '| token length:', data.debug_token_length);
     return [];
   } catch (err) {
     console.error('fetchItems error', err);
