@@ -436,6 +436,7 @@ async function handleFormSubmit(e) {
     folderIdCache = {}; // เริ่ม cache ใหม่ทุกครั้งที่ส่งฟอร์ม
     const reportDateStr = formatDateYMD(new Date()); // "วันที่แจ้ง" = วันนี้ ตอนกดส่งฟอร์ม
     const fileLinks = [];
+    const fileTypes = [];
     for (let i = 0; i < selectedFiles.length; i++) {
       const isVideo = selectedFiles[i].type.startsWith('video');
       const folderId = await getDestinationFolderId(reporterName, reportDateStr, isVideo);
@@ -444,6 +445,7 @@ async function handleFormSubmit(e) {
         Swal.update({ html: 'กำลังอัปโหลดไฟล์แนบ (' + (i + 1) + '/' + selectedFiles.length + ') — ' + pct + '%<br><span style="font-size:11px;color:#94a3b8">ไฟล์ขนาดใหญ่ เช่น วิดีโอยาว อาจใช้เวลาหลายนาที กรุณาอย่าปิดหน้านี้</span>' });
       });
       fileLinks.push(link);
+      fileTypes.push(isVideo ? 'video' : 'image');
     }
 
     const result = await postAction({
@@ -451,7 +453,8 @@ async function handleFormSubmit(e) {
       reporter_name: reporterName,
       publish_date: publishDate,
       sdgs: checked,
-      file_links: fileLinks
+      file_links: fileLinks,
+      file_types: fileTypes
     });
 
     if (result.status === 'success') {
@@ -598,12 +601,27 @@ function extractDriveFileId(url) {
 }
 
 // แสดงไฟล์แนบเป็นรูปตัวอย่าง (thumbnail) แทนลิงก์ข้อความ คลิกแล้วเปิดดูแบบเต็มในแท็บใหม่
-function renderFileThumbnails(fileLinks) {
+// - รูปภาพ: โชว์ thumbnail จริงจาก Drive
+// - วิดีโอ: โชว์การ์ดไอคอน 🎬 แทน (ไม่พยายามโหลด thumbnail เพราะ Drive อาจยังประมวลผลวิดีโอไม่เสร็จ ทำให้ขึ้นรูปว่างเปล่า)
+//   ลิงก์จะพาไปเปิดที่ Google Drive เสมอ ซึ่งเป็นทางที่เชื่อถือได้ที่สุดในการเล่นวิดีโอ (ถ้า Drive ยังประมวลผลไม่เสร็จ
+//   จะขึ้นข้อความ "still being processed" ที่หน้า Drive เอง — เป็นเรื่องปกติของไฟล์ใหญ่/ยาว ต้องรอสักครู่แล้วลองใหม่)
+function renderFileThumbnails(fileLinks, fileTypes) {
   if (!fileLinks || !fileLinks.length) return '';
+  fileTypes = fileTypes || [];
   return `
     <div class="flex flex-wrap gap-2 mt-2">
       ${fileLinks.map((url, idx) => {
+        const isVideo = fileTypes[idx] === 'video';
         const fileId = extractDriveFileId(url);
+
+        if (isVideo) {
+          return `
+            <a href="${url}" target="_blank" rel="noopener" class="flex flex-col items-center justify-center gap-1 w-24 h-24 rounded-lg border border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-400 transition-all bg-slate-100 text-slate-600" title="วิดีโอที่ ${idx + 1} — เปิดดูใน Google Drive">
+              <span class="text-2xl">🎬</span>
+              <span class="text-[10px] text-center px-1">เปิดดูใน Drive</span>
+            </a>
+          `;
+        }
         if (fileId) {
           const thumbSrc = `https://lh3.googleusercontent.com/d/${fileId}=w300`;
           return `
@@ -631,7 +649,7 @@ function showItemDetail(t) {
         <p>👤 ผู้แจ้ง: ${t.reporter_name || '-'} (${t.reporter_email || '-'})</p>
         <p>📅 กำหนดลง: ${formatThaiDate(t.publish_date)}</p>
         <p>🏷️ SDGs: ${(t.sdgs || []).join(', ') || '-'}</p>
-        ${(t.file_links || []).length ? `<p>📎 ไฟล์แนบ:</p>${renderFileThumbnails(t.file_links)}` : ''}
+        ${(t.file_links || []).length ? `<p>📎 ไฟล์แนบ: ${t.file_links.length} ไฟล์ ${(t.file_types || []).includes('video') ? '<span style="font-size:11px;color:#94a3b8">(วิดีโอที่เพิ่งอัปโหลดใหม่ อาจต้องรอ Drive ประมวลผลสักครู่ก่อนเล่นได้)</span>' : ''}</p>${renderFileThumbnails(t.file_links, t.file_types)}` : ''}
       </div>
     `,
     confirmButtonText: 'ปิด',
