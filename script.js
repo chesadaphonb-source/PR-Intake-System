@@ -4,10 +4,10 @@
 // 1) CLIENT_ID: สร้างจาก Google Cloud Console > APIs & Services > Credentials
 //    > Create Credentials > OAuth Client ID > Web application
 //    ใส่ Authorized JavaScript origins เป็น URL ของหน้าเว็บนี้ (เช่น https://xxxx.github.io)
-const CLIENT_ID = '718318914992-teacpoi09b7ndb4ll22v0rtguoevs55h.apps.googleusercontent.com';
+const CLIENT_ID = 'YOUR_OAUTH_CLIENT_ID.apps.googleusercontent.com';
 
 // 2) API_URL: URL ของ Web App ที่ deploy จาก Code.gs (อัปเดตทุกครั้งที่ deploy ใหม่)
-const API_URL = 'https://script.google.com/macros/s/AKfycbw_a56KSdipmhLD0wb6uAlGwupek4cBnv1f6zIiFWIde0PCRiTjWL8TDV_R6bDXPUACIg/exec';
+const API_URL = 'https://script.google.com/macros/s/XXXXXXXXXXXXXXXXXXXXXXXX/exec';
 
 const ALLOWED_DOMAIN = 'ku.th';
 // scope: drive.file (อัปโหลด/จัดการเฉพาะไฟล์ที่แอปนี้สร้าง) + userinfo.email (เอาไว้ตรวจโดเมน)
@@ -565,6 +565,37 @@ function renderDashboardTab(items) {
   }).join('');
 }
 
+// ดึง Google Drive File ID จากลิงก์แบบ https://drive.google.com/file/d/FILE_ID/view...
+function extractDriveFileId(url) {
+  const match = String(url).match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : null;
+}
+
+// แสดงไฟล์แนบเป็นรูปตัวอย่าง (thumbnail) แทนลิงก์ข้อความ คลิกแล้วเปิดดูแบบเต็มในแท็บใหม่
+function renderFileThumbnails(fileLinks) {
+  if (!fileLinks || !fileLinks.length) return '';
+  return `
+    <div class="flex flex-wrap gap-2 mt-2">
+      ${fileLinks.map((url, idx) => {
+        const fileId = extractDriveFileId(url);
+        if (fileId) {
+          const thumbSrc = `https://lh3.googleusercontent.com/d/${fileId}=w300`;
+          return `
+            <a href="${url}" target="_blank" rel="noopener" class="block w-24 h-24 rounded-lg overflow-hidden border border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-400 transition-all bg-slate-100" title="ไฟล์ที่ ${idx + 1} (คลิกเพื่อดูขนาดเต็ม)">
+              <img src="${thumbSrc}" alt="ไฟล์แนบที่ ${idx + 1}" class="w-full h-full object-cover" loading="lazy">
+            </a>
+          `;
+        }
+        return `
+          <a href="${url}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1 rounded-lg hover:bg-blue-100 transition-colors">
+            📎 ไฟล์ที่ ${idx + 1}
+          </a>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
 function showItemDetail(t) {
   Swal.fire({
     title: t.reporter_name || t.id,
@@ -574,7 +605,7 @@ function showItemDetail(t) {
         <p>👤 ผู้แจ้ง: ${t.reporter_name || '-'} (${t.reporter_email || '-'})</p>
         <p>📅 กำหนดลง: ${formatThaiDate(t.publish_date)}</p>
         <p>🏷️ SDGs: ${(t.sdgs || []).join(', ') || '-'}</p>
-        ${(t.file_links || []).length ? `<p>📎 ไฟล์แนบ: ${(t.file_links || []).map((l, i) => `<a href="${l}" target="_blank" class="text-blue-600 underline">ไฟล์ ${i + 1}</a>`).join(' | ')}</p>` : ''}
+        ${(t.file_links || []).length ? `<p>📎 ไฟล์แนบ:</p>${renderFileThumbnails(t.file_links)}` : ''}
       </div>
     `,
     confirmButtonText: 'ปิด',
