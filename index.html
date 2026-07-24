@@ -87,8 +87,40 @@
             </div>
 
             <div>
+              <label class="block text-sm font-semibold mb-2 text-slate-700">ไฮไลต์ข่าว <span class="text-red-500">*</span></label>
+              <input type="text" id="pr-highlight" required class="field-input" placeholder="ประเด็นเด่นของข่าว (สรุปสั้นๆ)">
+            </div>
+
+            <div>
               <label class="block text-sm font-semibold mb-2 text-slate-700">เนื้อหาที่จะประชาสัมพันธ์ <span class="text-red-500">*</span></label>
               <textarea id="pr-content" required rows="5" class="field-input" placeholder="รายละเอียดเนื้อหาข่าวที่ต้องการเผยแพร่"></textarea>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-semibold mb-2 text-slate-700">พันธกิจ <span class="text-red-500">*</span></label>
+                <select id="pr-mission" required class="field-input">
+                  <option value="" disabled selected>-- เลือกพันธกิจ --</option>
+                  <option value="การเรียนการสอน">การเรียนการสอน</option>
+                  <option value="วิจัย">วิจัย</option>
+                  <option value="บริการวิชาการ">บริการวิชาการ</option>
+                  <option value="ทำนุบำรุงศิลปวัฒนธรรม">ทำนุบำรุงศิลปวัฒนธรรม</option>
+                  <option value="พัฒนานิสิต">พัฒนานิสิต</option>
+                  <option value="บริหารจัดการ">บริหารจัดการ</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-sm font-semibold mb-2 text-slate-700">หน่วยงาน <span class="text-red-500">*</span></label>
+                <select id="pr-department" required class="field-input">
+                  <option value="" disabled selected>-- เลือกหน่วยงาน --</option>
+                  <option value="ภาคเทคโนโลยีและการจัดการสิ่งแวดล้อม">ภาคเทคโนโลยีและการจัดการสิ่งแวดล้อม</option>
+                  <option value="ภาควิทยาศาสตร์สิ่งแวดล้อม">ภาควิทยาศาสตร์สิ่งแวดล้อม</option>
+                  <option value="ภาคสิ่งแวดล้อมเพื่อความยั่งยืน">ภาคสิ่งแวดล้อมเพื่อความยั่งยืน</option>
+                  <option value="คณะสิ่งแวดล้อม">คณะสิ่งแวดล้อม</option>
+                  <option value="ศูนย์วิจัยและบริการวิชาการ">ศูนย์วิจัยและบริการวิชาการ</option>
+                  <option value="สำนักงานเลขานุการ">สำนักงานเลขานุการ</option>
+                </select>
+              </div>
             </div>
 
             <div>
