@@ -414,6 +414,8 @@ async function handleFormSubmit(e) {
   e.preventDefault();
 
   const reporterName = document.getElementById('reporter-name').value.trim();
+  const prTitle = document.getElementById('pr-title').value.trim();
+  const prContent = document.getElementById('pr-content').value.trim();
   const publishDate = document.getElementById('publish-date').value;
   const checked = Array.from(document.querySelectorAll('#sdgs-checklist input:checked')).map(i => i.value);
 
@@ -451,6 +453,8 @@ async function handleFormSubmit(e) {
     const result = await postAction({
       action: 'create',
       reporter_name: reporterName,
+      title: prTitle,
+      content: prContent,
       publish_date: publishDate,
       sdgs: checked,
       file_links: fileLinks,
@@ -483,16 +487,15 @@ async function handleFormSubmit(e) {
 // 🗂️ 5. Tabs
 // ==========================================
 function switchTab(tab) {
-  ['form', 'calendar', 'dashboard', 'list'].forEach(t => {
+  ['form', 'calendar', 'list'].forEach(t => {
     document.getElementById(t + '-section').classList.toggle('hidden', t !== tab);
     document.getElementById('tab-' + t).classList.toggle('active', t === tab);
   });
 
-  if (tab === 'calendar' || tab === 'dashboard' || tab === 'list') {
+  if (tab === 'calendar' || tab === 'list') {
     fetchItems().then(items => {
       allItemsCache = items;
       if (tab === 'calendar') renderCalendarTab(items);
-      if (tab === 'dashboard') renderDashboardTab(items);
       if (tab === 'list') renderListTab(items);
     });
   }
@@ -508,7 +511,7 @@ function renderCalendarTab(items) {
   const events = items
     .filter(t => t.publish_date)
     .map(t => ({
-      title: '📰 ' + (t.reporter_name || t.id),
+      title: '📰 ' + (t.title || t.reporter_name || t.id),
       start: t.publish_date,
       color: getDeadlineColor(t.publish_date),
       extendedProps: { item: t }
@@ -544,54 +547,6 @@ function daysUntil(dateStr) {
   today.setHours(0, 0, 0, 0);
   const target = new Date(dateStr + 'T00:00:00');
   return Math.round((target - today) / 86400000);
-}
-
-// ==========================================
-// 📊 7. แดชบอร์ดภาระงาน
-// ==========================================
-function renderDashboardTab(items) {
-  const total = items.length;
-  const pending = items.filter(t => daysUntil(t.publish_date) > 3).length;
-  const overdueOrSoon = items.filter(t => daysUntil(t.publish_date) <= 3);
-
-  document.getElementById('stat-total').textContent = total;
-  document.getElementById('stat-pending').textContent = pending;
-  document.getElementById('stat-overdue').textContent = overdueOrSoon.length;
-
-  const overdueList = document.getElementById('overdue-list');
-  const sorted = overdueOrSoon.slice().sort((a, b) => daysUntil(a.publish_date) - daysUntil(b.publish_date));
-  overdueList.innerHTML = sorted.length ? sorted.map(t => {
-    const d = daysUntil(t.publish_date);
-    const badge = d < 0
-      ? `<span class="px-2 py-0.5 rounded badge-overdue text-xs font-bold">เลยกำหนด ${Math.abs(d)} วัน</span>`
-      : `<span class="px-2 py-0.5 rounded badge-soon text-xs font-bold">อีก ${d} วัน</span>`;
-    return `
-      <div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 cursor-pointer hover:border-blue-400" onclick='showItemDetail(${JSON.stringify(t).replace(/'/g, "&apos;")})'>
-        <div>
-          <p class="font-semibold">${t.reporter_name || '-'} <span class="text-slate-500 font-mono text-xs">#${t.id}</span></p>
-          <p class="text-xs text-slate-500">กำหนดลง: ${formatThaiDate(t.publish_date)}</p>
-        </div>
-        ${badge}
-      </div>`;
-  }).join('') : '<p class="text-slate-500 text-sm">ไม่มีข่าวที่ใกล้ครบกำหนดหรือเลยกำหนด 🎉</p>';
-
-  const sdgsCount = {};
-  sdgsList.forEach(s => sdgsCount[s] = 0);
-  items.forEach(t => (t.sdgs || []).forEach(s => { sdgsCount[s] = (sdgsCount[s] || 0) + 1; }));
-  const maxCount = Math.max(1, ...Object.values(sdgsCount));
-
-  const chartEl = document.getElementById('sdgs-chart');
-  chartEl.innerHTML = Object.keys(sdgsCount).map(s => {
-    const count = sdgsCount[s];
-    const pct = Math.round((count / maxCount) * 100);
-    return `
-      <div>
-        <div class="flex justify-between text-xs mb-1"><span>${s}</span><span class="text-slate-500">${count}</span></div>
-        <div class="w-full bg-slate-100 rounded-full h-2.5">
-          <div class="bg-gradient-to-r from-blue-500 to-blue-700 h-2.5 rounded-full" style="width:${pct}%"></div>
-        </div>
-      </div>`;
-  }).join('');
 }
 
 // ดึง Google Drive File ID จากลิงก์แบบ https://drive.google.com/file/d/FILE_ID/view...
@@ -642,12 +597,13 @@ function renderFileThumbnails(fileLinks, fileTypes) {
 
 function showItemDetail(t) {
   Swal.fire({
-    title: t.reporter_name || t.id,
+    title: t.title || t.reporter_name || t.id,
     html: `
       <div class="text-left text-sm space-y-2">
         <p>🆔 ${t.id}</p>
         <p>👤 ผู้แจ้ง: ${t.reporter_name || '-'} (${t.reporter_email || '-'})</p>
-        <p>📅 กำหนดลง: ${formatThaiDate(t.publish_date)}</p>
+        <p>📅 วันที่ปฏิบัติ: ${formatThaiDate(t.publish_date)}</p>
+        ${t.content ? `<div><p class="font-semibold">📝 เนื้อหา:</p><p class="text-slate-600 whitespace-pre-wrap">${t.content}</p></div>` : ''}
         <p>🏷️ SDGs: ${(t.sdgs || []).join(', ') || '-'}</p>
         ${(t.file_links || []).length ? `<p>📎 ไฟล์แนบ: ${t.file_links.length} ไฟล์ ${(t.file_types || []).includes('video') ? '<span style="font-size:11px;color:#94a3b8">(วิดีโอที่เพิ่งอัปโหลดใหม่ อาจต้องรอ Drive ประมวลผลสักครู่ก่อนเล่นได้)</span>' : ''}</p>${renderFileThumbnails(t.file_links, t.file_types)}` : ''}
       </div>
@@ -670,11 +626,11 @@ function renderListTab(items) {
     <div class="p-4 flex flex-col sm:flex-row gap-3 justify-between sm:items-center">
       <div>
         <div class="flex items-center gap-2 flex-wrap">
-          <span class="font-bold">${t.reporter_name || '-'}</span>
+          <span class="font-bold">${t.title || t.reporter_name || '-'}</span>
           <span class="text-xs font-mono text-slate-500">#${t.id}</span>
         </div>
         <p class="text-sm text-slate-500">📅 ${formatThaiDate(t.publish_date)} · 🏷️ ${(t.sdgs || []).join(', ') || '-'}</p>
-        <p class="text-xs text-slate-500">โดย ${t.reporter_email || '-'} · แจ้งเมื่อ ${t.created_at || '-'}</p>
+        <p class="text-xs text-slate-500">แจ้งโดย ${t.reporter_name || '-'} (${t.reporter_email || '-'}) · แจ้งเมื่อ ${t.created_at || '-'}</p>
       </div>
       <div class="flex gap-2">
         <button onclick='showItemDetail(${JSON.stringify(t).replace(/'/g, "&apos;")})' class="px-3 py-1.5 bg-slate-100 text-slate-700 text-xs rounded-lg hover:bg-slate-200">ดูรายละเอียด</button>
@@ -711,7 +667,15 @@ function openEditModal(t) {
           <input id="edit-name" class="swal2-input" style="margin:0" value="${escapeAttr(t.reporter_name || '')}">
         </div>
         <div>
-          <label class="text-xs font-semibold block mb-1">วันที่ต้องการให้ลง</label>
+          <label class="text-xs font-semibold block mb-1">หัวข้อเรื่อง</label>
+          <input id="edit-title" class="swal2-input" style="margin:0" value="${escapeAttr(t.title || '')}">
+        </div>
+        <div>
+          <label class="text-xs font-semibold block mb-1">เนื้อหาที่จะประชาสัมพันธ์</label>
+          <textarea id="edit-content" class="swal2-textarea" style="margin:0" rows="4">${escapeAttr(t.content || '')}</textarea>
+        </div>
+        <div>
+          <label class="text-xs font-semibold block mb-1">วันที่ปฏิบัติ</label>
           <input id="edit-date" type="date" class="swal2-input" style="margin:0" value="${t.publish_date || ''}">
         </div>
         <div>
@@ -726,9 +690,11 @@ function openEditModal(t) {
     confirmButtonColor: '#ea580c',
     preConfirm: async () => {
       const name = document.getElementById('edit-name').value.trim();
+      const title = document.getElementById('edit-title').value.trim();
+      const content = document.getElementById('edit-content').value.trim();
       const date = document.getElementById('edit-date').value;
       const checked = Array.from(document.querySelectorAll('#edit-sdgs input:checked')).map(i => i.value);
-      const result = await postAction({ action: 'update', id: t.id, reporter_name: name, publish_date: date, sdgs: checked });
+      const result = await postAction({ action: 'update', id: t.id, reporter_name: name, title: title, content: content, publish_date: date, sdgs: checked });
       if (result.status !== 'success') {
         Swal.showValidationMessage(result.message || 'แก้ไขไม่สำเร็จ');
         return false;
