@@ -415,7 +415,10 @@ async function handleFormSubmit(e) {
 
   const reporterName = document.getElementById('reporter-name').value.trim();
   const prTitle = document.getElementById('pr-title').value.trim();
+  const prHighlight = document.getElementById('pr-highlight').value.trim();
   const prContent = document.getElementById('pr-content').value.trim();
+  const prMission = document.getElementById('pr-mission').value;
+  const prDepartment = document.getElementById('pr-department').value;
   const publishDate = document.getElementById('publish-date').value;
   const checked = Array.from(document.querySelectorAll('#sdgs-checklist input:checked')).map(i => i.value);
 
@@ -454,7 +457,10 @@ async function handleFormSubmit(e) {
       action: 'create',
       reporter_name: reporterName,
       title: prTitle,
+      highlight: prHighlight,
       content: prContent,
+      mission: prMission,
+      department: prDepartment,
       publish_date: publishDate,
       sdgs: checked,
       file_links: fileLinks,
@@ -602,7 +608,9 @@ function showItemDetail(t) {
       <div class="text-left text-sm space-y-2">
         <p>🆔 ${t.id}</p>
         <p>👤 ผู้แจ้ง: ${t.reporter_name || '-'} (${t.reporter_email || '-'})</p>
+        ${t.highlight ? `<p>✨ ไฮไลต์: ${t.highlight}</p>` : ''}
         <p>📅 วันที่ปฏิบัติ: ${formatThaiDate(t.publish_date)}</p>
+        <p>🏢 พันธกิจ: ${t.mission || '-'} · หน่วยงาน: ${t.department || '-'}</p>
         ${t.content ? `<div><p class="font-semibold">📝 เนื้อหา:</p><p class="text-slate-600 whitespace-pre-wrap">${t.content}</p></div>` : ''}
         <p>🏷️ SDGs: ${(t.sdgs || []).join(', ') || '-'}</p>
         ${(t.file_links || []).length ? `<p>📎 ไฟล์แนบ: ${t.file_links.length} ไฟล์ ${(t.file_types || []).includes('video') ? '<span style="font-size:11px;color:#94a3b8">(วิดีโอที่เพิ่งอัปโหลดใหม่ อาจต้องรอ Drive ประมวลผลสักครู่ก่อนเล่นได้)</span>' : ''}</p>${renderFileThumbnails(t.file_links, t.file_types)}` : ''}
@@ -629,7 +637,8 @@ function renderListTab(items) {
           <span class="font-bold">${t.title || t.reporter_name || '-'}</span>
           <span class="text-xs font-mono text-slate-500">#${t.id}</span>
         </div>
-        <p class="text-sm text-slate-500">📅 ${formatThaiDate(t.publish_date)} · 🏷️ ${(t.sdgs || []).join(', ') || '-'}</p>
+        <p class="text-sm text-slate-500">📅 ${formatThaiDate(t.publish_date)} · 🏢 ${t.mission || '-'} / ${t.department || '-'}</p>
+        <p class="text-sm text-slate-500">🏷️ ${(t.sdgs || []).join(', ') || '-'}</p>
         <p class="text-xs text-slate-500">แจ้งโดย ${t.reporter_name || '-'} (${t.reporter_email || '-'}) · แจ้งเมื่อ ${t.created_at || '-'}</p>
       </div>
       <div class="flex gap-2">
@@ -671,8 +680,24 @@ function openEditModal(t) {
           <input id="edit-title" class="swal2-input" style="margin:0" value="${escapeAttr(t.title || '')}">
         </div>
         <div>
+          <label class="text-xs font-semibold block mb-1">ไฮไลต์ข่าว</label>
+          <input id="edit-highlight" class="swal2-input" style="margin:0" value="${escapeAttr(t.highlight || '')}">
+        </div>
+        <div>
           <label class="text-xs font-semibold block mb-1">เนื้อหาที่จะประชาสัมพันธ์</label>
           <textarea id="edit-content" class="swal2-textarea" style="margin:0" rows="4">${escapeAttr(t.content || '')}</textarea>
+        </div>
+        <div>
+          <label class="text-xs font-semibold block mb-1">พันธกิจ</label>
+          <select id="edit-mission" class="swal2-input" style="margin:0">
+            ${['การเรียนการสอน','วิจัย','บริการวิชาการ','ทำนุบำรุงศิลปวัฒนธรรม','พัฒนานิสิต','บริหารจัดการ'].map(m => `<option value="${m}" ${t.mission === m ? 'selected' : ''}>${m}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="text-xs font-semibold block mb-1">หน่วยงาน</label>
+          <select id="edit-department" class="swal2-input" style="margin:0">
+            ${['ภาคเทคโนโลยีและการจัดการสิ่งแวดล้อม','ภาควิทยาศาสตร์สิ่งแวดล้อม','ภาคสิ่งแวดล้อมเพื่อความยั่งยืน','คณะสิ่งแวดล้อม','ศูนย์วิจัยและบริการวิชาการ','สำนักงานเลขานุการ'].map(d => `<option value="${d}" ${t.department === d ? 'selected' : ''}>${d}</option>`).join('')}
+          </select>
         </div>
         <div>
           <label class="text-xs font-semibold block mb-1">วันที่ปฏิบัติ</label>
@@ -691,10 +716,13 @@ function openEditModal(t) {
     preConfirm: async () => {
       const name = document.getElementById('edit-name').value.trim();
       const title = document.getElementById('edit-title').value.trim();
+      const highlight = document.getElementById('edit-highlight').value.trim();
       const content = document.getElementById('edit-content').value.trim();
+      const mission = document.getElementById('edit-mission').value;
+      const department = document.getElementById('edit-department').value;
       const date = document.getElementById('edit-date').value;
       const checked = Array.from(document.querySelectorAll('#edit-sdgs input:checked')).map(i => i.value);
-      const result = await postAction({ action: 'update', id: t.id, reporter_name: name, title: title, content: content, publish_date: date, sdgs: checked });
+      const result = await postAction({ action: 'update', id: t.id, reporter_name: name, title: title, highlight: highlight, content: content, mission: mission, department: department, publish_date: date, sdgs: checked });
       if (result.status !== 'success') {
         Swal.showValidationMessage(result.message || 'แก้ไขไม่สำเร็จ');
         return false;
