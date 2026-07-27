@@ -65,6 +65,7 @@ let sdgsList = SDGS_GROUPS.flatMap(g => g.items); // รายการแบบ
 let allItemsCache = [];
 let selectedFiles = [];
 let fullCalendarInstance = null;
+let pendingDeepLinkId = new URLSearchParams(window.location.search).get('id'); // ถ้ามีคนกดลิงก์จากการ์ด Google Chat เข้ามา
 
 // ==========================================
 // 🔐 1. Google Sign-In (จำกัดเฉพาะโดเมน ku.th)
@@ -132,7 +133,7 @@ async function afterLoginSuccess() {
   document.getElementById('user-email').textContent = currentUserEmail;
 
   renderSdgsChecklist(); // แสดงรายการ SDGs ทันที ไม่ต้องรอ backend เพราะเป็นข้อมูลคงที่
-  switchTab('form');
+  switchTab(pendingDeepLinkId ? 'list' : 'form');
   fetchConfig(); // ยิงแยกไว้เบื้องหลัง เอาไว้เช็คสิทธิ์ผู้ดูแล (is_editor) เท่านั้น
 }
 
@@ -502,7 +503,14 @@ function switchTab(tab) {
     fetchItems().then(items => {
       allItemsCache = items;
       if (tab === 'calendar') renderCalendarTab(items);
-      if (tab === 'list') renderListTab(items);
+      if (tab === 'list') {
+        renderListTab(items);
+        if (pendingDeepLinkId) {
+          const match = items.find(x => x.id === pendingDeepLinkId);
+          if (match) showItemDetail(match);
+          pendingDeepLinkId = null; // เปิดครั้งเดียวพอ ไม่ต้องเด้งซ้ำทุกครั้งที่กลับมาแท็บนี้
+        }
+      }
     });
   }
 }
