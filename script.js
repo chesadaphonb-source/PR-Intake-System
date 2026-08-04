@@ -362,12 +362,12 @@ function renderSdgsChecklist(selected) {
   if (!container) return;
   container.innerHTML = SDGS_GROUPS.map(g => `
     <div class="col-span-full">
-      <p class="text-xs font-bold text-blue-600 mt-2 mb-1">${g.group}</p>
+      <p class="text-xs font-bold text-blue-600 mt-2 mb-1">${escapeHtml(g.group)}</p>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
         ${g.items.map(s => `
           <label class="sdgs-chip">
             <input type="checkbox" value="${escapeAttr(s)}" ${selected.includes(s) ? 'checked' : ''}>
-            <span>${s}</span>
+            <span>${escapeHtml(s)}</span>
           </label>
         `).join('')}
       </div>
@@ -401,7 +401,7 @@ function renderFilePreview() {
   if (!el) return;
   el.innerHTML = selectedFiles.map((f, idx) => `
     <div class="text-xs bg-slate-100 border border-slate-200 text-slate-700 rounded-lg px-2 py-1 flex items-center gap-2">
-      <span>${f.type.startsWith('video') ? '🎬' : '🖼️'} ${f.name}</span>
+      <span>${f.type.startsWith('video') ? '🎬' : '🖼️'} ${escapeHtml(f.name)}</span>
       <button type="button" onclick="removeSelectedFile(${idx})" class="text-slate-500 hover:text-red-400">✕</button>
     </div>
   `).join('');
@@ -472,7 +472,7 @@ async function handleFormSubmit(e) {
       Swal.fire({
         icon: 'success',
         title: 'ส่งข้อมูลประชาสัมพันธ์สำเร็จ!',
-        html: 'รหัสอ้างอิง: <b class="text-blue-600">' + result.id + '</b>',
+        html: 'รหัสอ้างอิง: <b class="text-blue-600">' + escapeHtml(result.id) + '</b>',
         confirmButtonColor: '#ea580c'
       }).then(() => {
         document.getElementById('pr-form').reset();
@@ -525,7 +525,7 @@ function renderCalendarTab(items) {
   const events = items
     .filter(t => t.publish_date)
     .map(t => ({
-      title: '📰 ' + (t.title || t.reporter_name || t.id),
+      title: '📰 ' + (t.title || t.reporter_name || t.id), // FullCalendar render เป็น text node เอง ไม่ผ่าน innerHTML จึงปลอดภัยอยู่แล้ว
       start: t.publish_date,
       color: getDeadlineColor(t.publish_date),
       extendedProps: { item: t }
@@ -580,27 +580,30 @@ function renderFileThumbnails(fileLinks, fileTypes) {
   return `
     <div class="flex flex-wrap gap-2 mt-2">
       ${fileLinks.map((url, idx) => {
+        // ⚠️ url มาจาก Google Drive API (uploadFileToDrive) ไม่ใช่ input อิสระของ user โดยตรง
+        // แต่ยังคง escape ตอนใส่ใน href/src attribute เพื่อความปลอดภัยเชิงป้องกัน (defense in depth)
         const isVideo = fileTypes[idx] === 'video';
         const fileId = extractDriveFileId(url);
+        const safeUrl = escapeAttr(url);
 
         if (isVideo) {
           return `
-            <a href="${url}" target="_blank" rel="noopener" class="flex flex-col items-center justify-center gap-1 w-24 h-24 rounded-lg border border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-400 transition-all bg-slate-100 text-slate-600" title="วิดีโอที่ ${idx + 1} — เปิดดูใน Google Drive">
+            <a href="${safeUrl}" target="_blank" rel="noopener" class="flex flex-col items-center justify-center gap-1 w-24 h-24 rounded-lg border border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-400 transition-all bg-slate-100 text-slate-600" title="วิดีโอที่ ${idx + 1} — เปิดดูใน Google Drive">
               <span class="text-2xl">🎬</span>
               <span class="text-[10px] text-center px-1">เปิดดูใน Drive</span>
             </a>
           `;
         }
         if (fileId) {
-          const thumbSrc = `https://lh3.googleusercontent.com/d/${fileId}=w300`;
+          const thumbSrc = `https://lh3.googleusercontent.com/d/${escapeAttr(fileId)}=w300`;
           return `
-            <a href="${url}" target="_blank" rel="noopener" class="block w-24 h-24 rounded-lg overflow-hidden border border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-400 transition-all bg-slate-100" title="ไฟล์ที่ ${idx + 1} (คลิกเพื่อดูขนาดเต็ม)">
+            <a href="${safeUrl}" target="_blank" rel="noopener" class="block w-24 h-24 rounded-lg overflow-hidden border border-slate-200 shadow-sm hover:ring-2 hover:ring-blue-400 transition-all bg-slate-100" title="ไฟล์ที่ ${idx + 1} (คลิกเพื่อดูขนาดเต็ม)">
               <img src="${thumbSrc}" alt="ไฟล์แนบที่ ${idx + 1}" class="w-full h-full object-cover" loading="lazy">
             </a>
           `;
         }
         return `
-          <a href="${url}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1 rounded-lg hover:bg-blue-100 transition-colors">
+          <a href="${safeUrl}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1 rounded-lg hover:bg-blue-100 transition-colors">
             📎 ไฟล์ที่ ${idx + 1}
           </a>
         `;
@@ -611,16 +614,16 @@ function renderFileThumbnails(fileLinks, fileTypes) {
 
 function showItemDetail(t) {
   Swal.fire({
-    title: t.title || t.reporter_name || t.id,
+    title: t.title || t.reporter_name || t.id, // Swal title ไม่ใช่ html mode จึงไม่จำเป็นต้อง escape ตรงนี้
     html: `
       <div class="text-left text-sm space-y-2">
-        <p>🆔 ${t.id}</p>
-        <p>👤 ผู้แจ้ง: ${t.reporter_name || '-'} (${t.reporter_email || '-'})</p>
-        ${t.highlight ? `<p>✨ ไฮไลต์: ${t.highlight}</p>` : ''}
+        <p>🆔 ${escapeHtml(t.id)}</p>
+        <p>👤 ผู้แจ้ง: ${escapeHtml(t.reporter_name || '-')} (${escapeHtml(t.reporter_email || '-')})</p>
+        ${t.highlight ? `<p>✨ ไฮไลต์: ${escapeHtml(t.highlight)}</p>` : ''}
         <p>📅 วันที่ปฏิบัติ: ${formatThaiDate(t.publish_date)}</p>
-        <p>🏢 พันธกิจ: ${t.mission || '-'} · หน่วยงาน: ${t.department || '-'}</p>
-        ${t.content ? `<div><p class="font-semibold">📝 เนื้อหา:</p><p class="text-slate-600 whitespace-pre-wrap">${t.content}</p></div>` : ''}
-        <p>🏷️ SDGs: ${(t.sdgs || []).join(', ') || '-'}</p>
+        <p>🏢 พันธกิจ: ${escapeHtml(t.mission || '-')} · หน่วยงาน: ${escapeHtml(t.department || '-')}</p>
+        ${t.content ? `<div><p class="font-semibold">📝 เนื้อหา:</p><p class="text-slate-600 whitespace-pre-wrap">${escapeHtml(t.content)}</p></div>` : ''}
+        <p>🏷️ SDGs: ${escapeHtml((t.sdgs || []).join(', ') || '-')}</p>
         ${(t.file_links || []).length ? `<p>📎 ไฟล์แนบ: ${t.file_links.length} ไฟล์ ${(t.file_types || []).includes('video') ? '<span style="font-size:11px;color:#94a3b8">(วิดีโอที่เพิ่งอัปโหลดใหม่ อาจต้องรอ Drive ประมวลผลสักครู่ก่อนเล่นได้)</span>' : ''}</p>${renderFileThumbnails(t.file_links, t.file_types)}` : ''}
       </div>
     `,
@@ -642,18 +645,18 @@ function renderListTab(items) {
     <div class="p-4 flex flex-col sm:flex-row gap-3 justify-between sm:items-center">
       <div>
         <div class="flex items-center gap-2 flex-wrap">
-          <span class="font-bold">${t.title || t.reporter_name || '-'}</span>
-          <span class="text-xs font-mono text-slate-500">#${t.id}</span>
+          <span class="font-bold">${escapeHtml(t.title || t.reporter_name || '-')}</span>
+          <span class="text-xs font-mono text-slate-500">#${escapeHtml(t.id)}</span>
         </div>
-        <p class="text-sm text-slate-500">📅 ${formatThaiDate(t.publish_date)} · 🏢 ${t.mission || '-'} / ${t.department || '-'}</p>
-        <p class="text-sm text-slate-500">🏷️ ${(t.sdgs || []).join(', ') || '-'}</p>
-        <p class="text-xs text-slate-500">แจ้งโดย ${t.reporter_name || '-'} (${t.reporter_email || '-'}) · แจ้งเมื่อ ${t.created_at || '-'}</p>
+        <p class="text-sm text-slate-500">📅 ${formatThaiDate(t.publish_date)} · 🏢 ${escapeHtml(t.mission || '-')} / ${escapeHtml(t.department || '-')}</p>
+        <p class="text-sm text-slate-500">🏷️ ${escapeHtml((t.sdgs || []).join(', ') || '-')}</p>
+        <p class="text-xs text-slate-500">แจ้งโดย ${escapeHtml(t.reporter_name || '-')} (${escapeHtml(t.reporter_email || '-')}) · แจ้งเมื่อ ${escapeHtml(t.created_at || '-')}</p>
       </div>
       <div class="flex gap-2">
         <button onclick='showItemDetail(${JSON.stringify(t).replace(/'/g, "&apos;")})' class="px-3 py-1.5 bg-slate-100 text-slate-700 text-xs rounded-lg hover:bg-slate-200">ดูรายละเอียด</button>
         ${isEditorUser ? `
           <button onclick='openEditModal(${JSON.stringify(t).replace(/'/g, "&apos;")})' class="px-3 py-1.5 bg-blue-600 text-xs rounded-lg hover:bg-blue-700">แก้ไข</button>
-          <button onclick="confirmDelete('${t.id}')" class="px-3 py-1.5 bg-red-600 text-xs rounded-lg hover:bg-red-700">ลบ</button>
+          <button onclick="confirmDelete('${escapeAttr(t.id)}')" class="px-3 py-1.5 bg-red-600 text-xs rounded-lg hover:bg-red-700">ลบ</button>
         ` : ''}
       </div>
     </div>
@@ -663,12 +666,12 @@ function renderListTab(items) {
 function openEditModal(t) {
   const chips = SDGS_GROUPS.map(g => `
     <div class="col-span-full">
-      <p class="text-xs font-bold text-blue-600 mt-2 mb-1">${g.group}</p>
+      <p class="text-xs font-bold text-blue-600 mt-2 mb-1">${escapeHtml(g.group)}</p>
       <div class="grid grid-cols-1 gap-2">
         ${g.items.map(s => `
           <label class="sdgs-chip">
             <input type="checkbox" value="${escapeAttr(s)}" ${(t.sdgs || []).includes(s) ? 'checked' : ''}>
-            <span>${s}</span>
+            <span>${escapeHtml(s)}</span>
           </label>
         `).join('')}
       </div>
@@ -676,7 +679,7 @@ function openEditModal(t) {
   `).join('');
 
   Swal.fire({
-    title: 'แก้ไขรายการ #' + t.id,
+    title: 'แก้ไขรายการ #' + escapeHtml(t.id),
     html: `
       <div class="text-left space-y-3">
         <div>
@@ -693,23 +696,23 @@ function openEditModal(t) {
         </div>
         <div>
           <label class="text-xs font-semibold block mb-1">เนื้อหาที่จะประชาสัมพันธ์</label>
-          <textarea id="edit-content" class="swal2-textarea" style="margin:0" rows="4">${escapeAttr(t.content || '')}</textarea>
+          <textarea id="edit-content" class="swal2-textarea" style="margin:0" rows="4">${escapeHtml(t.content || '')}</textarea>
         </div>
         <div>
           <label class="text-xs font-semibold block mb-1">พันธกิจ</label>
           <select id="edit-mission" class="swal2-input" style="margin:0">
-            ${['การเรียนการสอน','วิจัย','บริการวิชาการ','ทำนุบำรุงศิลปวัฒนธรรม','พัฒนานิสิต','บริหารจัดการ'].map(m => `<option value="${m}" ${t.mission === m ? 'selected' : ''}>${m}</option>`).join('')}
+            ${['การเรียนการสอน','วิจัย','บริการวิชาการ','ทำนุบำรุงศิลปวัฒนธรรม','พัฒนานิสิต','บริหารจัดการ'].map(m => `<option value="${escapeAttr(m)}" ${t.mission === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')}
           </select>
         </div>
         <div>
           <label class="text-xs font-semibold block mb-1">หน่วยงาน</label>
           <select id="edit-department" class="swal2-input" style="margin:0">
-            ${['ภาคเทคโนโลยีและการจัดการสิ่งแวดล้อม','ภาควิทยาศาสตร์สิ่งแวดล้อม','ภาคสิ่งแวดล้อมเพื่อความยั่งยืน','คณะสิ่งแวดล้อม','ศูนย์วิจัยและบริการวิชาการ','สำนักงานเลขานุการ'].map(d => `<option value="${d}" ${t.department === d ? 'selected' : ''}>${d}</option>`).join('')}
+            ${['ภาคเทคโนโลยีและการจัดการสิ่งแวดล้อม','ภาควิทยาศาสตร์สิ่งแวดล้อม','ภาคสิ่งแวดล้อมเพื่อความยั่งยืน','คณะสิ่งแวดล้อม','ศูนย์วิจัยและบริการวิชาการ','สำนักงานเลขานุการ'].map(d => `<option value="${escapeAttr(d)}" ${t.department === d ? 'selected' : ''}>${escapeHtml(d)}</option>`).join('')}
           </select>
         </div>
         <div>
           <label class="text-xs font-semibold block mb-1">วันที่ปฏิบัติ</label>
-          <input id="edit-date" type="date" class="swal2-input" style="margin:0" value="${t.publish_date || ''}">
+          <input id="edit-date" type="date" class="swal2-input" style="margin:0" value="${escapeAttr(t.publish_date || '')}">
         </div>
         <div>
           <label class="text-xs font-semibold block mb-1">SDGs</label>
@@ -774,9 +777,31 @@ function formatThaiDate(dateStr) {
   if (isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
 }
-function escapeAttr(str) {
-  return String(str).replace(/"/g, '&quot;');
+
+// ✅ ใช้เมื่อจะแทรกค่าเป็น "เนื้อหา" ใน HTML (ระหว่าง tag เช่น <p>...</p>)
+// escape ทั้ง 5 ตัวอันตราย: & < > " ' — กัน XSS จากข้อมูลที่ user กรอกเองแล้วถูกดึงมาแสดงผล
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[c]));
 }
+
+// ✅ ใช้เมื่อจะแทรกค่าเป็น "attribute" เช่น value="...", href="..."
+// (escape ชุดเดียวกับ escapeHtml ก็เพียงพอและปลอดภัยสำหรับ attribute ที่ครอบด้วยเครื่องหมายคำพูดคู่)
+function escapeAttr(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[c]));
+}
+
 function formatDateYMD(d) {
   const pad = n => String(n).padStart(2, '0');
   return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
