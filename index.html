@@ -159,6 +159,11 @@
 
       <!-- ============ รายการทั้งหมด ============ -->
       <div id="list-section" class="hidden animate-fade-in max-w-6xl mx-auto">
+        <div class="flex flex-wrap gap-2 mb-4">
+          <button onclick="setListFilter('all')" id="filter-all" class="list-filter-btn active">ทั้งหมด</button>
+          <button onclick="setListFilter('published')" id="filter-published" class="list-filter-btn">✅ ลงข่าวแล้ว</button>
+          <button onclick="setListFilter('pending')" id="filter-pending" class="list-filter-btn">⏳ ยังไม่ลง</button>
+        </div>
         <div class="bg-white rounded-2xl shadow-xl border border-slate-200 divide-y divide-slate-100" id="pr-list">
           <div class="p-8 text-center text-slate-500">กำลังโหลดข้อมูล...</div>
         </div>
