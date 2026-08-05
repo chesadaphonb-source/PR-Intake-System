@@ -63,6 +63,7 @@ const SDGS_GROUPS = [
 ];
 let sdgsList = SDGS_GROUPS.flatMap(g => g.items); // รายการแบบ flat ไว้ใช้กับแดชบอร์ด/แก้ไข/บันทึกข้อมูล
 let allItemsCache = [];
+let listFilter = 'all';
 let selectedFiles = [];
 let fullCalendarInstance = null;
 let pendingDeepLinkId = new URLSearchParams(window.location.search).get('id'); // ถ้ามีคนกดลิงก์จากการ์ด Google Chat เข้ามา
@@ -635,26 +636,57 @@ function showItemDetail(t) {
 // ==========================================
 // 📂 8. รายการทั้งหมด (แก้ไข/ลบ เฉพาะผู้ดูแล)
 // ==========================================
+function setListFilter(f) {
+  listFilter = f;
+  document.querySelectorAll('.list-filter-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('filter-' + f).classList.add('active');
+  renderListTab(allItemsCache);
+}
+
+async function togglePublished(id, newState) {
+  const result = await postAction({ action: 'toggle_published', id: id, published: newState });
+  if (result.status === 'success') {
+    const item = allItemsCache.find(x => x.id === id);
+    if (item) item.published = newState;
+    renderListTab(allItemsCache);
+  } else {
+    Swal.fire({ icon: 'error', title: 'ทำรายการไม่สำเร็จ', text: result.message, confirmButtonColor: '#ea580c' });
+  }
+}
+
 function renderListTab(items) {
   const el = document.getElementById('pr-list');
-  if (!items.length) {
-    el.innerHTML = '<div class="p-8 text-center text-slate-500">ยังไม่มีข้อมูลในระบบ</div>';
+  const filtered = items.filter(t => {
+    if (listFilter === 'published') return !!t.published;
+    if (listFilter === 'pending') return !t.published;
+    return true;
+  });
+
+  if (!filtered.length) {
+    el.innerHTML = '<div class="p-8 text-center text-slate-500">ไม่มีข้อมูลในหมวดนี้</div>';
     return;
   }
-  el.innerHTML = items.map(t => `
+
+  el.innerHTML = filtered.map(t => `
     <div class="p-4 flex flex-col sm:flex-row gap-3 justify-between sm:items-center">
       <div>
         <div class="flex items-center gap-2 flex-wrap">
           <span class="font-bold">${escapeHtml(t.title || t.reporter_name || '-')}</span>
           <span class="text-xs font-mono text-slate-500">#${escapeHtml(t.id)}</span>
+          ${t.published
+            ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">✅ ลงข่าวแล้ว</span>'
+            : '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">⏳ ยังไม่ลง</span>'}
         </div>
         <p class="text-sm text-slate-500">📅 ${formatThaiDate(t.publish_date)} · 🏢 ${escapeHtml(t.mission || '-')} / ${escapeHtml(t.department || '-')}</p>
         <p class="text-sm text-slate-500">🏷️ ${escapeHtml((t.sdgs || []).join(', ') || '-')}</p>
         <p class="text-xs text-slate-500">แจ้งโดย ${escapeHtml(t.reporter_name || '-')} (${escapeHtml(t.reporter_email || '-')}) · แจ้งเมื่อ ${escapeHtml(t.created_at || '-')}</p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex gap-2 flex-wrap">
         <button onclick='showItemDetail(${JSON.stringify(t).replace(/'/g, "&apos;")})' class="px-3 py-1.5 bg-slate-100 text-slate-700 text-xs rounded-lg hover:bg-slate-200">ดูรายละเอียด</button>
         ${isEditorUser ? `
+          <button onclick="togglePublished('${escapeAttr(t.id)}', ${!t.published})" class="px-3 py-1.5 text-xs rounded-lg ${t.published ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' : 'bg-emerald-600 text-white hover:bg-emerald-700'}">
+            ${t.published ? 'ยกเลิกเครื่องหมาย' : '✅ ทำเครื่องหมายว่าลงแล้ว'}
+          </button>
           <button onclick='openEditModal(${JSON.stringify(t).replace(/'/g, "&apos;")})' class="px-3 py-1.5 bg-blue-600 text-xs rounded-lg hover:bg-blue-700">แก้ไข</button>
           <button onclick="confirmDelete('${escapeAttr(t.id)}')" class="px-3 py-1.5 bg-red-600 text-xs rounded-lg hover:bg-red-700">ลบ</button>
         ` : ''}
