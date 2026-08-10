@@ -291,14 +291,19 @@ async function uploadFileToDrive(file, folderId, onProgress) {
     },
     body: JSON.stringify(metadata)
   });
-  if (!initRes.ok) throw new Error('เริ่มอัปโหลดไฟล์ไม่สำเร็จ: ' + file.name);
+  if (initRes.status === 401) {
+    throw new Error('เซสชันหมดอายุก่อนเริ่มอัปโหลด: ' + file.name + ' — กรุณาออกจากระบบแล้วเข้าใหม่ แล้วลองส่งอีกครั้ง');
+  }
+  if (!initRes.ok) throw new Error('เริ่มอัปโหลดไฟล์ไม่สำเร็จ: ' + file.name + ' (รหัสสถานะ ' + initRes.status + ')');
   const uploadUrl = initRes.headers.get('Location');
   if (!uploadUrl) throw new Error('ไม่พบช่องทางอัปโหลดไฟล์: ' + file.name);
 
   // 2) ส่งไฟล์เป็นก้อนๆ (chunk ละ 8MB) แทนการส่งทีเดียวทั้งไฟล์
   //    - ไม่ต้องแปลง base64 ทั้งไฟล์ (ลดการใช้หน่วยความจำเบราว์เซอร์ลงมาก)
   //    - ถ้าก้อนไหนล้มเหลว ลอง retry เฉพาะก้อนนั้นได้ ไม่ต้องเริ่มใหม่ทั้งไฟล์
+  //    - retry ครอบคลุมทั้ง network error และ HTTP error ที่เป็นปัญหาชั่วคราว (5xx/429)
   const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB
+  const MAX_ATTEMPTS_PER_CHUNK = 5;
   let start = 0;
   let uploadedFileId = null;
   let uploadedWebViewLink = null;
@@ -309,19 +314,36 @@ async function uploadFileToDrive(file, folderId, onProgress) {
 
     let res;
     let attempt = 0;
+
     while (true) {
+      attempt++;
       try {
         res = await fetch(uploadUrl, {
           method: 'PUT',
           headers: { 'Content-Range': `bytes ${start}-${end - 1}/${file.size}` },
           body: chunk
         });
-        break;
       } catch (err) {
-        attempt++;
-        if (attempt >= 3) throw new Error('อัปโหลดไฟล์ล้มเหลว (เครือข่ายขัดข้อง): ' + file.name);
-        await new Promise(r => setTimeout(r, 1000 * attempt)); // รอแล้วลองใหม่ กันเน็ตสะดุดชั่วคราว
+        // network error ระดับ fetch เอง (เน็ตหลุดกลางคัน)
+        if (attempt >= MAX_ATTEMPTS_PER_CHUNK) {
+          throw new Error('อัปโหลดไฟล์ล้มเหลว (เครือข่ายขัดข้อง): ' + file.name + ' — เน็ตอาจไม่เสถียรพอสำหรับไฟล์ขนาดนี้');
+        }
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+        continue;
       }
+
+      // 401 = token หมดอายุระหว่างอัปโหลดไฟล์ใหญ่ (พบบ่อยกับไฟล์ที่ใช้เวลาอัปโหลดนานเกิน 1 ชม.)
+      if (res.status === 401) {
+        throw new Error('เซสชันหมดอายุระหว่างอัปโหลด: ' + file.name + ' — ไฟล์นี้อาจใหญ่/ใช้เวลานานเกินไป กรุณาออกจากระบบแล้วเข้าใหม่ แล้วลองส่งไฟล์นี้อีกครั้ง');
+      }
+
+      // 5xx/429 = ปัญหาชั่วคราวฝั่ง Google หรือโดน rate limit — retry ก้อนเดิมได้
+      if ((res.status >= 500 || res.status === 429) && attempt < MAX_ATTEMPTS_PER_CHUNK) {
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+        continue;
+      }
+
+      break; // ได้ผลลัพธ์ที่ชัดเจนแล้ว (สำเร็จ/308/error ถาวร) ออกจาก retry loop
     }
 
     if (res.status === 200 || res.status === 201) {
@@ -335,7 +357,9 @@ async function uploadFileToDrive(file, folderId, onProgress) {
       start = end;
       if (onProgress) onProgress(start / file.size);
     } else {
-      throw new Error('อัปโหลดไฟล์ไม่สำเร็จ: ' + file.name + ' (รหัสสถานะ ' + res.status + ')');
+      let detail = '';
+      try { detail = (await res.json()).error?.message || ''; } catch (e) {}
+      throw new Error('อัปโหลดไฟล์ไม่สำเร็จ: ' + file.name + ' (รหัสสถานะ ' + res.status + (detail ? ' — ' + detail : '') + ')');
     }
   }
 
