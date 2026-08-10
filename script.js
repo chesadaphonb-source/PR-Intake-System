@@ -384,6 +384,13 @@ document.addEventListener('DOMContentLoaded', () => {
     locale: 'th',
     disableMobile: true
   });
+  flatpickr('#publish-end-date', {
+    dateFormat: 'Y-m-d',
+    altInput: true,
+    altFormat: 'j F Y',
+    locale: 'th',
+    disableMobile: true
+  });
 
   const filesInput = document.getElementById('pr-files');
   if (filesInput) {
@@ -422,7 +429,13 @@ async function handleFormSubmit(e) {
   const prMission = document.getElementById('pr-mission').value;
   const prDepartment = document.getElementById('pr-department').value;
   const publishDate = document.getElementById('publish-date').value;
+  const publishEndDate = document.getElementById('publish-end-date').value;
   const checked = Array.from(document.querySelectorAll('#sdgs-checklist input:checked')).map(i => i.value);
+
+  if (publishEndDate < publishDate) {
+    Swal.fire({ icon: 'warning', title: 'วันที่สิ้นสุดต้องไม่มาก่อนวันที่เริ่ม', confirmButtonColor: '#ea580c' });
+    return;
+  }
 
   if (!checked.length) {
     Swal.fire({ icon: 'warning', title: 'กรุณาเลือกหมวดหมู่ SDGs อย่างน้อย 1 ข้อ', confirmButtonColor: '#ea580c' });
@@ -464,6 +477,7 @@ async function handleFormSubmit(e) {
       mission: prMission,
       department: prDepartment,
       publish_date: publishDate,
+      publish_end_date: publishEndDate,
       sdgs: checked,
       file_links: fileLinks,
       file_types: fileTypes
@@ -621,7 +635,7 @@ function showItemDetail(t) {
         <p>🆔 ${escapeHtml(t.id)}</p>
         <p>👤 ผู้แจ้ง: ${escapeHtml(t.reporter_name || '-')} (${escapeHtml(t.reporter_email || '-')})</p>
         ${t.highlight ? `<p>✨ ไฮไลต์: ${escapeHtml(t.highlight)}</p>` : ''}
-        <p>📅 วันที่ปฏิบัติ: ${formatThaiDate(t.publish_date)}</p>
+        <p>📅 วันที่ปฏิบัติ: ${formatThaiDate(t.publish_date)}${t.publish_end_date ? ' - ' + formatThaiDate(t.publish_end_date) : ''}</p>
         <p>🏢 พันธกิจ: ${escapeHtml(t.mission || '-')} · หน่วยงาน: ${escapeHtml(t.department || '-')}</p>
         ${t.content ? `<div><p class="font-semibold">📝 เนื้อหา:</p><p class="text-slate-600 whitespace-pre-wrap">${escapeHtml(t.content)}</p></div>` : ''}
         <p>🏷️ SDGs: ${escapeHtml((t.sdgs || []).join(', ') || '-')}</p>
@@ -636,6 +650,18 @@ function showItemDetail(t) {
 // ==========================================
 // 📂 8. รายการทั้งหมด (แก้ไข/ลบ เฉพาะผู้ดูแล)
 // ==========================================
+async function refreshList() {
+  const btn = document.getElementById('btn-refresh-list');
+  const originalText = btn.textContent;
+  btn.textContent = '🔄 กำลังโหลด...';
+  btn.disabled = true;
+  const items = await fetchItems();
+  allItemsCache = items;
+  renderListTab(items);
+  btn.textContent = originalText;
+  btn.disabled = false;
+}
+
 function setListFilter(f) {
   listFilter = f;
   document.querySelectorAll('.list-filter-btn').forEach(b => b.classList.remove('active'));
@@ -677,7 +703,7 @@ function renderListTab(items) {
             ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">✅ ลงข่าวแล้ว</span>'
             : '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">⏳ ยังไม่ลง</span>'}
         </div>
-        <p class="text-sm text-slate-500">📅 ${formatThaiDate(t.publish_date)} · 🏢 ${escapeHtml(t.mission || '-')} / ${escapeHtml(t.department || '-')}</p>
+        <p class="text-sm text-slate-500">📅 ${formatThaiDate(t.publish_date)}${t.publish_end_date ? ' - ' + formatThaiDate(t.publish_end_date) : ''} · 🏢 ${escapeHtml(t.mission || '-')} / ${escapeHtml(t.department || '-')}</p>
         <p class="text-sm text-slate-500">🏷️ ${escapeHtml((t.sdgs || []).join(', ') || '-')}</p>
         <p class="text-xs text-slate-500">แจ้งโดย ${escapeHtml(t.reporter_name || '-')} (${escapeHtml(t.reporter_email || '-')}) · แจ้งเมื่อ ${escapeHtml(t.created_at || '-')}</p>
       </div>
@@ -743,8 +769,12 @@ function openEditModal(t) {
           </select>
         </div>
         <div>
-          <label class="text-xs font-semibold block mb-1">วันที่ปฏิบัติ</label>
+          <label class="text-xs font-semibold block mb-1">วันที่เริ่มปฏิบัติ</label>
           <input id="edit-date" type="date" class="swal2-input" style="margin:0" value="${escapeAttr(t.publish_date || '')}">
+        </div>
+        <div>
+          <label class="text-xs font-semibold block mb-1">วันที่สิ้นสุด</label>
+          <input id="edit-end-date" type="date" class="swal2-input" style="margin:0" value="${escapeAttr(t.publish_end_date || '')}">
         </div>
         <div>
           <label class="text-xs font-semibold block mb-1">SDGs</label>
@@ -764,8 +794,9 @@ function openEditModal(t) {
       const mission = document.getElementById('edit-mission').value;
       const department = document.getElementById('edit-department').value;
       const date = document.getElementById('edit-date').value;
+      const endDate = document.getElementById('edit-end-date').value;
       const checked = Array.from(document.querySelectorAll('#edit-sdgs input:checked')).map(i => i.value);
-      const result = await postAction({ action: 'update', id: t.id, reporter_name: name, title: title, highlight: highlight, content: content, mission: mission, department: department, publish_date: date, sdgs: checked });
+      const result = await postAction({ action: 'update', id: t.id, reporter_name: name, title: title, highlight: highlight, content: content, mission: mission, department: department, publish_date: date, publish_end_date: endDate, sdgs: checked });
       if (result.status !== 'success') {
         Swal.showValidationMessage(result.message || 'แก้ไขไม่สำเร็จ');
         return false;
