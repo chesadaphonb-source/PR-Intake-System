@@ -566,6 +566,7 @@ function renderCalendarTab(items) {
     .map(t => ({
       title: '📰 ' + (t.title || t.reporter_name || t.id), // FullCalendar render เป็น text node เอง ไม่ผ่าน innerHTML จึงปลอดภัยอยู่แล้ว
       start: t.publish_date,
+      end: t.publish_end_date && t.publish_end_date > t.publish_date ? addOneDay(t.publish_end_date) : undefined,
       color: getDeadlineColor(t.publish_date),
       extendedProps: { item: t }
     }));
@@ -600,6 +601,11 @@ function daysUntil(dateStr) {
   today.setHours(0, 0, 0, 0);
   const target = new Date(dateStr + 'T00:00:00');
   return Math.round((target - today) / 86400000);
+}
+function addOneDay(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + 1);
+  return formatDateYMD(d);
 }
 
 // ดึง Google Drive File ID จากลิงก์แบบ https://drive.google.com/file/d/FILE_ID/view...
@@ -820,6 +826,12 @@ function openEditModal(t) {
       const date = document.getElementById('edit-date').value;
       const endDate = document.getElementById('edit-end-date').value;
       const checked = Array.from(document.querySelectorAll('#edit-sdgs input:checked')).map(i => i.value);
+
+      if (endDate && date && endDate < date) {
+        Swal.showValidationMessage('วันที่สิ้นสุดต้องไม่มาก่อนวันที่เริ่มปฏิบัติ');
+        return false;
+      }
+
       const result = await postAction({ action: 'update', id: t.id, reporter_name: name, title: title, highlight: highlight, content: content, mission: mission, department: department, publish_date: date, publish_end_date: endDate, sdgs: checked });
       if (result.status !== 'success') {
         Swal.showValidationMessage(result.message || 'แก้ไขไม่สำเร็จ');
