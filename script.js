@@ -469,10 +469,17 @@ async function handleFormSubmit(e) {
   const progressEl = document.getElementById('upload-progress');
   progressEl.classList.remove('hidden');
 
+  const submitBtn = document.getElementById('btn-submit');
+  submitBtn.disabled = true;
+  submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
   Swal.fire({
+    toast: true,
+    position: 'top-end',
     title: 'กำลังส่งข้อมูล...',
     html: 'กำลังอัปโหลดไฟล์แนบ (0/' + selectedFiles.length + ')',
-    allowOutsideClick: false,
+    showConfirmButton: false,
+    allowOutsideClick: true,
     didOpen: () => Swal.showLoading()
   });
 
@@ -508,6 +515,7 @@ async function handleFormSubmit(e) {
     });
 
     if (result.status === 'success') {
+      Swal.close(); // ปิด toast ที่ค้างอยู่ ก่อนเด้ง modal สำเร็จ
       Swal.fire({
         icon: 'success',
         title: 'ส่งข้อมูลประชาสัมพันธ์สำเร็จ!',
@@ -525,7 +533,11 @@ async function handleFormSubmit(e) {
     }
   } catch (err) {
     console.error(err);
+    Swal.close(); // ปิด toast ที่ค้างอยู่ ก่อนเด้ง modal error
     Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: err.message, confirmButtonColor: '#ea580c' });
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
   }
 }
 
