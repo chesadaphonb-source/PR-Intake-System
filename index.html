@@ -124,9 +124,15 @@
               </div>
             </div>
 
-            <div>
-              <label class="block text-sm font-semibold mb-2 text-slate-700">วันที่ปฏิบัติ <span class="text-red-500">*</span></label>
-              <input type="text" id="publish-date" required class="field-input" placeholder="เลือกวันที่...">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm font-semibold mb-2 text-slate-700">วันที่เริ่มปฏิบัติ <span class="text-red-500">*</span></label>
+                <input type="text" id="publish-date" required class="field-input" placeholder="เลือกวันที่...">
+              </div>
+              <div>
+                <label class="block text-sm font-semibold mb-2 text-slate-700">วันที่สิ้นสุด <span class="text-red-500">*</span></label>
+                <input type="text" id="publish-end-date" required class="field-input" placeholder="เลือกวันที่...">
+              </div>
             </div>
 
             <div>
@@ -160,10 +166,13 @@
 
       <!-- ============ รายการทั้งหมด ============ -->
       <div id="list-section" class="hidden animate-fade-in max-w-6xl mx-auto">
-        <div class="flex flex-wrap gap-2 mb-4">
-          <button onclick="setListFilter('all')" id="filter-all" class="list-filter-btn active">ทั้งหมด</button>
-          <button onclick="setListFilter('published')" id="filter-published" class="list-filter-btn">✅ ลงข่าวแล้ว</button>
-          <button onclick="setListFilter('pending')" id="filter-pending" class="list-filter-btn">⏳ ยังไม่ลง</button>
+        <div class="flex flex-wrap gap-2 mb-4 justify-between items-center">
+          <div class="flex flex-wrap gap-2">
+            <button onclick="setListFilter('all')" id="filter-all" class="list-filter-btn active">ทั้งหมด</button>
+            <button onclick="setListFilter('published')" id="filter-published" class="list-filter-btn">✅ ลงข่าวแล้ว</button>
+            <button onclick="setListFilter('pending')" id="filter-pending" class="list-filter-btn">⏳ ยังไม่ลง</button>
+          </div>
+          <button onclick="refreshList()" id="btn-refresh-list" class="list-filter-btn">🔄 รีเฟรช</button>
         </div>
         <div class="bg-white rounded-2xl shadow-xl border border-slate-200 divide-y divide-slate-100" id="pr-list">
           <div class="p-8 text-center text-slate-500">กำลังโหลดข้อมูล...</div>
