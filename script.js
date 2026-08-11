@@ -610,6 +610,18 @@ function getDeadlineColor(publishDate) {
   return '#3b82f6'; // รอลง
 }
 
+async function refreshCalendar() {
+  const btn = document.getElementById('btn-refresh-calendar');
+  const originalText = btn.textContent;
+  btn.textContent = '🔄 กำลังโหลด...';
+  btn.disabled = true;
+  const items = await fetchItems();
+  allItemsCache = items;
+  renderCalendarTab(items);
+  btn.textContent = originalText;
+  btn.disabled = false;
+}
+
 function daysUntil(dateStr) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
