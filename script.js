@@ -581,7 +581,7 @@ function renderCalendarTab(items) {
       title: '📰 ' + (t.title || t.reporter_name || t.id), // FullCalendar render เป็น text node เอง ไม่ผ่าน innerHTML จึงปลอดภัยอยู่แล้ว
       start: t.publish_date,
       end: t.publish_end_date && t.publish_end_date > t.publish_date ? addOneDay(t.publish_end_date) : undefined,
-      color: getDeadlineColor(t.publish_date),
+      color: getDepartmentColor(t.department),
       extendedProps: { item: t }
     }));
 
@@ -601,6 +601,20 @@ function renderCalendarTab(items) {
     eventClick: (info) => showItemDetail(info.event.extendedProps.item)
   });
   fullCalendarInstance.render();
+}
+
+const DEPARTMENT_COLORS = {
+  'ภาคเทคโนโลยีและการจัดการสิ่งแวดล้อม': '#2563eb',
+  'ภาควิทยาศาสตร์สิ่งแวดล้อม': '#059669',
+  'ภาคสิ่งแวดล้อมเพื่อความยั่งยืน': '#7c3aed',
+  'คณะสิ่งแวดล้อม': '#dc2626',
+  'ศูนย์วิจัยและบริการวิชาการ': '#d97706',
+  'สำนักงานเลขานุการ': '#0891b2'
+};
+const DEFAULT_DEPARTMENT_COLOR = '#64748b'; // เทา ใช้กรณีไม่ตรงหน่วยงานไหนเลย (กันพัง)
+
+function getDepartmentColor(department) {
+  return DEPARTMENT_COLORS[department] || DEFAULT_DEPARTMENT_COLOR;
 }
 
 function getDeadlineColor(publishDate) {
