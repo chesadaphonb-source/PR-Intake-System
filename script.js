@@ -65,6 +65,8 @@ let sdgsList = SDGS_GROUPS.flatMap(g => g.items); // รายการแบบ
 let allItemsCache = [];
 let listFilter = 'all';
 let selectedFiles = [];
+let editExistingFiles = []; // ไฟล์เดิมที่แนบอยู่แล้ว (ลบออกได้ทีละไฟล์)
+let editNewFiles = [];      // ไฟล์ใหม่ที่เลือกเพิ่มระหว่างแก้ไข
 let fullCalendarInstance = null;
 let pendingDeepLinkId = new URLSearchParams(window.location.search).get('id'); // ถ้ามีคนกดลิงก์จากการ์ด Google Chat เข้ามา
 
@@ -795,7 +797,53 @@ function renderListTab(items) {
   `).join('');
 }
 
+function renderEditExistingFiles() {
+  const el = document.getElementById('edit-existing-files');
+  if (!el) return;
+  if (!editExistingFiles.length) {
+    el.innerHTML = '<p class="text-xs text-slate-400">ไม่มีไฟล์แนบเดิม</p>';
+    return;
+  }
+  el.innerHTML = editExistingFiles.map((f, idx) => {
+    const isVideo = f.type === 'video';
+    const fileId = extractDriveFileId(f.url);
+    const thumb = !isVideo && fileId
+      ? `<img src="https://lh3.googleusercontent.com/d/${escapeAttr(fileId)}=w200" class="w-full h-full object-cover" loading="lazy">`
+      : `<span class="text-2xl">🎬</span>`;
+    return `
+      <div class="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center">
+        ${thumb}
+        <button type="button" onclick="removeExistingEditFile(${idx})" class="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-red-600 text-white text-xs flex items-center justify-center hover:bg-red-700">✕</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function removeExistingEditFile(idx) {
+  editExistingFiles.splice(idx, 1);
+  renderEditExistingFiles();
+}
+
+function renderEditNewFilesPreview() {
+  const el = document.getElementById('edit-new-files-preview');
+  if (!el) return;
+  el.innerHTML = editNewFiles.map((f, idx) => `
+    <div class="text-xs bg-slate-100 border border-slate-200 text-slate-700 rounded-lg px-2 py-1 flex items-center gap-2">
+      <span>${f.type.startsWith('video') ? '🎬' : '🖼️'} ${escapeHtml(f.name)}</span>
+      <button type="button" onclick="removeNewEditFile(${idx})" class="text-slate-500 hover:text-red-400">✕</button>
+    </div>
+  `).join('');
+}
+
+function removeNewEditFile(idx) {
+  editNewFiles.splice(idx, 1);
+  renderEditNewFilesPreview();
+}
+
 function openEditModal(t) {
+  editExistingFiles = (t.file_links || []).map((url, i) => ({ url, type: (t.file_types || [])[i] || 'image' }));
+  editNewFiles = [];
+
   const chips = SDGS_GROUPS.map(g => `
     <div class="col-span-full">
       <p class="text-xs font-bold text-blue-600 mt-2 mb-1">${escapeHtml(g.group)}</p>
@@ -812,6 +860,7 @@ function openEditModal(t) {
 
   Swal.fire({
     title: 'แก้ไขรายการ #' + escapeHtml(t.id),
+    width: 560,
     html: `
       <div class="text-left space-y-3">
         <div>
@@ -855,11 +904,27 @@ function openEditModal(t) {
           <input id="edit-end-date" type="date" class="swal2-input" style="margin:0" value="${escapeAttr(t.publish_end_date || '')}">
         </div>
         <div>
+          <label class="text-xs font-semibold block mb-1">ไฟล์แนบเดิม</label>
+          <div id="edit-existing-files" class="flex flex-wrap gap-2 mb-2"></div>
+          <label class="text-xs font-semibold block mb-1">เพิ่มไฟล์ใหม่</label>
+          <input type="file" id="edit-new-files-input" accept="image/*,video/*" multiple class="swal2-file" style="margin:0">
+          <div id="edit-new-files-preview" class="flex flex-wrap gap-2 mt-2"></div>
+        </div>
+        <div>
           <label class="text-xs font-semibold block mb-1">SDGs</label>
           <div id="edit-sdgs" class="grid grid-cols-1 gap-1 max-h-72 overflow-y-auto">${chips}</div>
         </div>
       </div>
     `,
+    didOpen: () => {
+      renderEditExistingFiles();
+      renderEditNewFilesPreview();
+      document.getElementById('edit-new-files-input').addEventListener('change', (e) => {
+        editNewFiles = editNewFiles.concat(Array.from(e.target.files || []));
+        renderEditNewFilesPreview();
+        e.target.value = '';
+      });
+    },
     confirmButtonText: 'บันทึกการแก้ไข',
     showCancelButton: true,
     cancelButtonText: 'ยกเลิก',
@@ -881,7 +946,42 @@ function openEditModal(t) {
         return false;
       }
 
-      const result = await postAction({ action: 'update', id: t.id, reporter_name: name, title: title, highlight: highlight, content: content, remark: remark, mission: mission, department: department, publish_date: date, publish_end_date: endDate, sdgs: checked });
+      let fileLinks = editExistingFiles.map(f => f.url);
+      let fileTypes = editExistingFiles.map(f => f.type);
+
+      if (editNewFiles.length) {
+        folderIdCache = {}; // เริ่ม cache ใหม่กันชนกับตอนสร้างรายการ
+        const reportDateStr = formatDateYMD(new Date());
+        try {
+          for (const file of editNewFiles) {
+            const isVideo = file.type.startsWith('video');
+            const folderId = await getDestinationFolderId(name || t.reporter_name, reportDateStr, isVideo);
+            const link = await uploadFileToDrive(file, folderId);
+            fileLinks.push(link);
+            fileTypes.push(isVideo ? 'video' : 'image');
+          }
+        } catch (err) {
+          Swal.showValidationMessage('อัปโหลดไฟล์ไม่สำเร็จ: ' + err.message);
+          return false;
+        }
+      }
+
+      const result = await postAction({
+        action: 'update',
+        id: t.id,
+        reporter_name: name,
+        title: title,
+        highlight: highlight,
+        content: content,
+        remark: remark,
+        mission: mission,
+        department: department,
+        publish_date: date,
+        publish_end_date: endDate,
+        sdgs: checked,
+        file_links: fileLinks,
+        file_types: fileTypes
+      });
       if (result.status !== 'success') {
         Swal.showValidationMessage(result.message || 'แก้ไขไม่สำเร็จ');
         return false;
@@ -895,7 +995,6 @@ function openEditModal(t) {
     }
   });
 }
-
 function confirmDelete(id) {
   Swal.fire({
     title: 'ลบรายการนี้?',
