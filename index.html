@@ -177,9 +177,14 @@
 
       <!-- ============ ปฏิทิน ============ -->
       <div id="calendar-section" class="hidden animate-fade-in max-w-6xl mx-auto">
-        <div class="bg-white rounded-2xl shadow-xl p-6 border border-slate-200">
-          <h2 class="heading-font text-2xl font-bold mb-1 text-slate-900">🗓️ ปฏิทินการลงข่าวประชาสัมพันธ์</h2>
-          <p class="text-sm text-slate-500 mb-6">แสดงตามวันที่ปฏิบัติของแต่ละเรื่อง</p>
+         <div class="bg-white rounded-2xl shadow-xl p-6 border border-slate-200">
+          <div class="flex flex-wrap justify-between items-start gap-3 mb-4">
+            <div>
+              <h2 class="heading-font text-2xl font-bold text-slate-900">🗓️ ปฏิทินการลงข่าวประชาสัมพันธ์</h2>
+              <p class="text-sm text-slate-500">แสดงตามช่วงวันที่ปฏิบัติของแต่ละเรื่อง</p>
+            </div>
+            <button onclick="refreshCalendar()" id="btn-refresh-calendar" class="list-filter-btn">🔄 รีเฟรช</button>
+          </div>
           <div id="calendar" class="min-h-[600px]"></div>
         </div>
       </div>
