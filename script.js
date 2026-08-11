@@ -459,7 +459,7 @@ async function handleFormSubmit(e) {
   const publishEndDate = document.getElementById('publish-end-date').value;
   const checked = Array.from(document.querySelectorAll('#sdgs-checklist input:checked')).map(i => i.value);
 
-  if (publishEndDate < publishDate) {
+  if (publishEndDate && publishEndDate < publishDate) {
     Swal.fire({ icon: 'warning', title: 'วันที่สิ้นสุดต้องไม่มาก่อนวันที่เริ่ม', confirmButtonColor: '#ea580c' });
     return;
   }
