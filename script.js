@@ -450,6 +450,7 @@ async function handleFormSubmit(e) {
   const prTitle = document.getElementById('pr-title').value.trim();
   const prHighlight = document.getElementById('pr-highlight').value.trim();
   const prContent = document.getElementById('pr-content').value.trim();
+  const prRemark = document.getElementById('pr-remark').value.trim();
   const prMission = document.getElementById('pr-mission').value;
   const prDepartment = document.getElementById('pr-department').value;
   const publishDate = document.getElementById('publish-date').value;
@@ -505,6 +506,7 @@ async function handleFormSubmit(e) {
       title: prTitle,
       highlight: prHighlight,
       content: prContent,
+      remark: prRemark,
       mission: prMission,
       department: prDepartment,
       publish_date: publishDate,
@@ -680,7 +682,11 @@ function showItemDetail(t) {
         <p>📅 วันที่ปฏิบัติ: ${formatThaiDate(t.publish_date)}${t.publish_end_date ? ' - ' + formatThaiDate(t.publish_end_date) : ''}</p>
         <p>🏢 พันธกิจ: ${escapeHtml(t.mission || '-')} · หน่วยงาน: ${escapeHtml(t.department || '-')}</p>
         ${t.content ? `<div><p class="font-semibold">📝 เนื้อหา:</p><p class="text-slate-600 whitespace-pre-wrap">${escapeHtml(t.content)}</p></div>` : ''}
-        <p>🏷️ SDGs: ${escapeHtml((t.sdgs || []).join(', ') || '-')}</p>
+        ${t.remark ? `<div><p class="font-semibold">🗒️ หมายเหตุ:</p><p class="text-slate-600 whitespace-pre-wrap">${escapeHtml(t.remark)}</p></div>` : ''}
+        <div>
+          <p class="font-semibold">🏷️ หมวดหมู่ SDGs:</p>
+          ${renderSdgsList(t.sdgs)}
+        </div>
         ${(t.file_links || []).length ? `<p>📎 ไฟล์แนบ: ${t.file_links.length} ไฟล์ ${(t.file_types || []).includes('video') ? '<span style="font-size:11px;color:#94a3b8">(วิดีโอที่เพิ่งอัปโหลดใหม่ อาจต้องรอ Drive ประมวลผลสักครู่ก่อนเล่นได้)</span>' : ''}</p>${renderFileThumbnails(t.file_links, t.file_types)}` : ''}
       </div>
     `,
@@ -799,6 +805,10 @@ function openEditModal(t) {
           <textarea id="edit-content" class="swal2-textarea" style="margin:0" rows="4">${escapeHtml(t.content || '')}</textarea>
         </div>
         <div>
+          <label class="text-xs font-semibold block mb-1">หมายเหตุ</label>
+          <textarea id="edit-remark" class="swal2-textarea" style="margin:0" rows="2">${escapeHtml(t.remark || '')}</textarea>
+        </div>
+        <div>
           <label class="text-xs font-semibold block mb-1">พันธกิจ</label>
           <select id="edit-mission" class="swal2-input" style="margin:0">
             ${['การเรียนการสอน','วิจัย','บริการวิชาการ','ทำนุบำรุงศิลปวัฒนธรรม','พัฒนานิสิต','บริหารจัดการ'].map(m => `<option value="${escapeAttr(m)}" ${t.mission === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')}
@@ -833,6 +843,7 @@ function openEditModal(t) {
       const title = document.getElementById('edit-title').value.trim();
       const highlight = document.getElementById('edit-highlight').value.trim();
       const content = document.getElementById('edit-content').value.trim();
+      const remark = document.getElementById('edit-remark').value.trim();
       const mission = document.getElementById('edit-mission').value;
       const department = document.getElementById('edit-department').value;
       const date = document.getElementById('edit-date').value;
@@ -844,7 +855,7 @@ function openEditModal(t) {
         return false;
       }
 
-      const result = await postAction({ action: 'update', id: t.id, reporter_name: name, title: title, highlight: highlight, content: content, mission: mission, department: department, publish_date: date, publish_end_date: endDate, sdgs: checked });
+      const result = await postAction({ action: 'update', id: t.id, reporter_name: name, title: title, highlight: highlight, content: content, remark: remark, mission: mission, department: department, publish_date: date, publish_end_date: endDate, sdgs: checked });
       if (result.status !== 'success') {
         Swal.showValidationMessage(result.message || 'แก้ไขไม่สำเร็จ');
         return false;
@@ -887,6 +898,14 @@ function formatThaiDate(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   if (isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+// แสดง SDGs เป็น bullet list แยกบรรทัด แทนการต่อกันด้วยจุลภาคยาวๆ
+function renderSdgsList(sdgs) {
+  if (!sdgs || !sdgs.length) return '<p class="text-slate-400">-</p>';
+  return '<ul class="list-disc list-inside space-y-1">' +
+    sdgs.map(s => '<li>' + escapeHtml(s) + '</li>').join('') +
+    '</ul>';
 }
 
 // ✅ ใช้เมื่อจะแทรกค่าเป็น "เนื้อหา" ใน HTML (ระหว่าง tag เช่น <p>...</p>)
